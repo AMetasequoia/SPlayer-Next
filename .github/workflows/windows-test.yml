@@ -1,0 +1,84 @@
+name: Windows x64 Test Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows x64
+    runs-on: windows-latest
+    env:
+      HUSKY: "0"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: 检出所选分支
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 准备 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+
+      - name: 准备项目指定版本的 pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: 准备 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 Rust 编译产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: 移除国内依赖镜像配置
+        shell: bash
+        run: rm -f .npmrc
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 检查代码规范
+        run: pnpm lint
+
+      - name: 运行 JavaScript 和界面测试
+        run: pnpm test
+
+      - name: 生成开发测试版本号
+        run: node scripts/gen-version.cjs dev
+
+      - name: 构建 Windows x64 安装版与便携版
+        env:
+          UPDATE_CHANNEL: nightly
+        run: pnpm build:win --x64 --publish never
+
+      - name: 上传测试包
+        uses: actions/upload-artifact@v7
+        with:
+          name: SPlayer-Next-windows-x64-test-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 写入测试说明
+        shell: bash
+        run: |
+          {
+            echo '## Windows x64 基线测试包'
+            echo "构建提交：$(git rev-parse HEAD)"
+            echo '从本次运行的 Artifacts 下载 ZIP 并解压'
+            echo '首次测试请关闭官方版，将 portable.exe 放到一个全新的文件夹后运行'
+            echo '便携版会在 exe 同级创建 UserData，不要放进现有便携版目录'
+            echo '当前尚未隔离安装版标识，请勿运行 setup.exe 覆盖官方版'
+            echo '当前仍保留官方更新来源，测试时不要执行更新'
+            echo '产物保留 7 天，本工作流不会创建 Release'
+          } >> "$GITHUB_STEP_SUMMARY"
