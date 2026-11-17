@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: 24.x
 
-      - name: 准备项目指定版本的 pnpm
+      - name: 准备 pnpm
         uses: pnpm/action-setup@v6
 
       - name: 准备 Rust
@@ -50,13 +50,13 @@ jobs:
       - name: 检查代码规范
         run: pnpm lint
 
-      - name: 运行 JavaScript 和界面测试
+      - name: 运行测试
         run: pnpm test
 
       - name: 生成开发测试版本号
         run: node scripts/gen-version.cjs dev
 
-      - name: 构建 Windows x64 安装版与便携版
+      - name: 构建 Windows x64
         env:
           UPDATE_CHANNEL: nightly
         run: pnpm build:win --x64 --publish never
@@ -69,16 +69,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: 写入测试说明
+      - name: 构建摘要
         shell: bash
         run: |
           {
-            echo '## Windows x64 基线测试包'
-            echo "构建提交：$(git rev-parse HEAD)"
-            echo '从本次运行的 Artifacts 下载 ZIP 并解压'
-            echo '首次测试请关闭官方版，将 portable.exe 放到一个全新的文件夹后运行'
-            echo '便携版会在 exe 同级创建 UserData，不要放进现有便携版目录'
-            echo '当前尚未隔离安装版标识，请勿运行 setup.exe 覆盖官方版'
-            echo '当前仍保留官方更新来源，测试时不要执行更新'
-            echo '产物保留 7 天，本工作流不会创建 Release'
+            echo '## Windows x64 测试包'
+            echo "提交：$(git rev-parse --short HEAD)"
+            echo '- 从 Artifacts 下载解压，使用独立测试目录中的 portable.exe，保留 UserData'
+            echo '- 暂勿运行 setup.exe 或执行更新；产物保留 7 天'
           } >> "$GITHUB_STEP_SUMMARY"
