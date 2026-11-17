@@ -97,6 +97,7 @@ afterEach(() => wrapper?.unmount());
 describe("云盘纠正弹窗", () => {
   it("输入本身不写入账号，验证预览后显式确认才提交原云盘 ID", async () => {
     mountDialog();
+    expect(wrapper.text()).not.toContain("输入正确的网易云歌曲 ID，验证歌曲信息后再确认");
     expect(button(text.confirm).attributes("disabled")).toBeDefined();
     expect(wrapper.findAll("input")[0].element.value).toBe("1000");
 

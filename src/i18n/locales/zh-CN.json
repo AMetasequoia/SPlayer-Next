@@ -668,7 +668,6 @@
     "match": {
       "action": "云盘歌曲纠正",
       "title": "纠正云盘歌曲信息",
-      "description": "输入正确的网易云歌曲 ID，验证歌曲信息后再确认。这会修改账号上的云盘歌曲关联，不会修改本地文件标签",
       "originalId": "原云盘歌曲 ID",
       "targetId": "匹配的歌曲 ID",
       "placeholder": "请输入正确的网易云歌曲 ID",

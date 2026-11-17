@@ -114,7 +114,6 @@ const confirm = async (): Promise<void> => {
     @update:open="(value) => emit('update:open', value)"
   >
     <div class="flex flex-col gap-4">
-      <SAlert>{{ t("cloud.match.description") }}</SAlert>
       <div class="text-sm font-medium truncate" :title="track.title">{{ track.title }}</div>
       <label class="flex flex-col gap-1">
         <span class="text-xs text-on-surface-variant">{{ t("cloud.match.originalId") }}</span>

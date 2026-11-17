@@ -668,7 +668,6 @@
     "match": {
       "action": "Correct cloud song",
       "title": "Correct Cloud Song Information",
-      "description": "Enter the correct NetEase song ID and verify the song before confirming. This changes the cloud song association in your account, not local file tags",
       "originalId": "Original cloud song ID",
       "targetId": "Target song ID",
       "placeholder": "Enter the correct NetEase song ID",
