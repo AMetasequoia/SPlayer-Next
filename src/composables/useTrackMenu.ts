@@ -13,6 +13,7 @@ import { toast } from "@/composables/useToast";
 import { buildDownloadQualityItems } from "@/composables/useDownload";
 import { getTrackShareUrl } from "@/utils/format/shareUrl";
 import { openExternal } from "@/utils/url";
+import { setPlayerExpanded } from "@/services/playerTransition";
 import IconPlay from "~icons/lucide/play";
 import IconListEnd from "~icons/lucide/list-end";
 import IconListPlus from "~icons/lucide/list-plus";
@@ -27,6 +28,7 @@ import IconSearch from "~icons/lucide/search";
 import IconMessageCircle from "~icons/lucide/message-circle";
 import IconMoreHorizontal from "~icons/lucide/more-horizontal";
 import IconPuzzle from "~icons/lucide/puzzle";
+import IconBookOpen from "~icons/lucide/book-open";
 
 export interface TrackMenuOptions {
   /** 集合类型 */
@@ -174,6 +176,12 @@ export const useTrackMenu = (
         icon: markRaw(IconMessageCircle),
       },
       {
+        key: "wiki",
+        label: t("wiki.title"),
+        icon: markRaw(IconBookOpen),
+        show: source === "netease" && /^[1-9]\d*$/.test(track.value?.id ?? ""),
+      },
+      {
         key: "more",
         label: t("songList.context.more"),
         icon: markRaw(IconMoreHorizontal),
@@ -306,6 +314,11 @@ export const useTrackMenu = (
         break;
       case "comments":
         status.showComments(current);
+        break;
+      case "wiki":
+        if (current.source !== "netease" || !/^[1-9]\d*$/.test(current.id)) break;
+        await router.push({ name: "song-wiki", params: { id: current.id } });
+        setPlayerExpanded(false);
         break;
       case "copyTitle":
         await copy(current.title);

@@ -657,6 +657,27 @@
       "failed": "Action failed, please try again"
     }
   },
+  "wiki": {
+    "title": "Music Encyclopedia",
+    "play": "Play",
+    "story": "Your Music Story",
+    "firstListen": "First Encounter",
+    "playCount": "Play Count",
+    "playCountValue": "Played {count} times",
+    "liked": "Liked Song",
+    "publishDate": "Release Date",
+    "basicInfo": "Music Information",
+    "sheets": "Sheet Music",
+    "sheetNumber": "Sheet {count}",
+    "achievements": "Achievements",
+    "similarSongs": "Similar Songs",
+    "preview": "Sheet Music Preview",
+    "noPreview": "No preview available",
+    "empty": "No additional encyclopedia information",
+    "loadFailed": "Could not load song information. Please try again",
+    "partialFailure": "Some information could not be loaded. Available content is shown",
+    "sheetFailed": "Could not load sheet music. Please try again"
+  },
   "cloud": {
     "title": "My Cloud",
     "empty": "No songs in your cloud yet",

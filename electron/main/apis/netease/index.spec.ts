@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   playlist_subscribe: vi.fn(),
   playlist_tracks: vi.fn(),
   cloud_match: vi.fn(),
+  song_wiki_summary: vi.fn(),
+  music_first_listen_info: vi.fn(),
   getSessionCookies: vi.fn(() => ({ MUSIC_U: "test-session" })),
   saveSessionCookies: vi.fn(),
   clearSessionCookies: vi.fn(),
@@ -44,6 +46,8 @@ vi.mock("./modules", () => ({
     playlist_subscribe: api.playlist_subscribe,
     playlist_tracks: api.playlist_tracks,
     cloud_match: api.cloud_match,
+    song_wiki_summary: api.song_wiki_summary,
+    music_first_listen_info: api.music_first_listen_info,
   },
 }));
 
@@ -67,6 +71,8 @@ describe("平台主进程缓存与会话", () => {
     api.search.mockReset().mockResolvedValue(response(200));
     api.login_refresh.mockReset().mockResolvedValue(response(200));
     api.cloud_match.mockReset().mockResolvedValue(response(200));
+    api.song_wiki_summary.mockReset().mockResolvedValue(response(200));
+    api.music_first_listen_info.mockReset().mockResolvedValue(response(200));
     for (const name of [
       "song_like",
       "artist_sub",
@@ -105,6 +111,21 @@ describe("平台主进程缓存与会话", () => {
       expect.any(Function),
     );
   });
+
+  it.each(["song_wiki_summary", "music_first_listen_info"] as const)(
+    "%s 含个人音乐故事，不复用查询缓存",
+    async (name) => {
+      await callNetease(name, { id: "10" });
+      await callNetease(name, { id: "10" });
+      expect(api[name]).toHaveBeenCalledTimes(2);
+      setNeteaseCookies({ MUSIC_U: "another-account" });
+      await callNetease(name, { id: "10" });
+      expect(api[name]).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cookie: { MUSIC_U: "another-account" } }),
+        expect.any(Function),
+      );
+    },
+  );
 
   it("NCBL 上报每次都发送，不能缓存重复播放的相同参数", async () => {
     await callNetease("scrobble_v1", { id: 1, time: 180 });

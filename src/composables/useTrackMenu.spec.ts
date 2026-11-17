@@ -4,8 +4,10 @@ import type { Track } from "@shared/types/player";
 import type { CollectionType } from "@/types/collection";
 import { useTrackMenu } from "./useTrackMenu";
 
+const actions = vi.hoisted(() => ({ push: vi.fn(), setPlayerExpanded: vi.fn() }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-vi.mock("vue-router", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("vue-router", () => ({ useRouter: () => ({ push: actions.push }) }));
+vi.mock("@/services/playerTransition", () => ({ setPlayerExpanded: actions.setPlayerExpanded }));
 vi.mock("@/core/player", () => ({}));
 vi.mock("@/stores/settings", () => ({
   useSettingsStore: () => ({ system: { download: { enabled: false } } }),
@@ -27,6 +29,40 @@ const track: Track = {
   artists: [],
   duration: 1000,
 };
+
+describe("音乐百科菜单入口", () => {
+  it("网易云歌曲用播放 ID 打开独立百科页面，不使用云盘条目 ID", async () => {
+    actions.push.mockClear();
+    actions.setPlayerExpanded.mockClear();
+    const menu = useTrackMenu(shallowRef(track));
+    expect(menu.items.value.find((item) => item.key === "wiki")?.show).toBe(true);
+    await menu.handleSelect("wiki");
+    expect(actions.push).toHaveBeenCalledExactlyOnceWith({
+      name: "song-wiki",
+      params: { id: "10" },
+    });
+    expect(actions.setPlayerExpanded).toHaveBeenCalledWith(false);
+  });
+
+  it.each(["local", "qqmusic", "kugou", "plugin", "streaming"] as const)(
+    "%s 不提供也不执行网易云百科跳转",
+    async (source) => {
+      actions.push.mockClear();
+      const menu = useTrackMenu(shallowRef({ ...track, source }));
+      expect(menu.items.value.find((item) => item.key === "wiki")?.show).toBe(false);
+      await menu.handleSelect("wiki");
+      expect(actions.push).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["0", "", "bad", "-1"])("无效播放 ID %s 不跳转百科", async (id) => {
+    actions.push.mockClear();
+    const menu = useTrackMenu(shallowRef({ ...track, id }));
+    expect(menu.items.value.find((item) => item.key === "wiki")?.show).toBe(false);
+    await menu.handleSelect("wiki");
+    expect(actions.push).not.toHaveBeenCalled();
+  });
+});
 
 describe("云盘纠正菜单入口", () => {
   it("云盘歌曲提供纠正入口，选中后传递完整身份而不直接写入账号", async () => {

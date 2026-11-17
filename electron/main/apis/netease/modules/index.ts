@@ -56,6 +56,10 @@ import song_url from "./song_url";
 import song_download_url from "./song_download_url";
 import song_simi_get from "./song_simi_get";
 import song_wiki_info from "./song_wiki_info";
+import song_wiki_summary from "./song_wiki_summary";
+import music_first_listen_info from "./music_first_listen_info";
+import sheet_list from "./sheet_list";
+import sheet_preview from "./sheet_preview";
 import song_dynamic_cover from "./song_dynamic_cover";
 import playmode_intelligence from "./playmode_intelligence";
 import personal_fm from "./personal_fm";
@@ -149,6 +153,10 @@ export const modules: Record<string, NeteaseModule> = {
   song_download_url,
   song_simi_get,
   song_wiki_info,
+  song_wiki_summary,
+  music_first_listen_info,
+  sheet_list,
+  sheet_preview,
   song_dynamic_cover,
   playmode_intelligence,
   personal_fm,

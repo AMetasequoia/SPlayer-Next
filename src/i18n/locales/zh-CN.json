@@ -657,6 +657,27 @@
       "failed": "操作失败，请稍后重试"
     }
   },
+  "wiki": {
+    "title": "音乐百科",
+    "play": "播放",
+    "story": "音乐故事",
+    "firstListen": "初次相遇",
+    "playCount": "播放计数",
+    "playCountValue": "累计播放 {count} 次",
+    "liked": "红心收藏",
+    "publishDate": "发行日期",
+    "basicInfo": "音乐简介",
+    "sheets": "乐谱",
+    "sheetNumber": "乐谱 {count}",
+    "achievements": "相关成就",
+    "similarSongs": "相似歌曲",
+    "preview": "乐谱预览",
+    "noPreview": "暂无预览内容",
+    "empty": "暂无更多百科信息",
+    "loadFailed": "歌曲信息加载失败，请稍后重试",
+    "partialFailure": "部分百科信息未能加载，已保留可用内容",
+    "sheetFailed": "乐谱加载失败，请重试"
+  },
   "cloud": {
     "title": "我的云盘",
     "empty": "云盘里还没有歌曲",

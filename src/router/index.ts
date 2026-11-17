@@ -63,6 +63,11 @@ const router = createRouter({
           component: () => import("@/pages/Collection.vue"),
         },
         {
+          path: "song/netease/:id/wiki",
+          name: "song-wiki",
+          component: () => import("@/pages/SongWiki.vue"),
+        },
+        {
           path: "artist/:source/:id",
           name: "artist",
           component: () => import("@/pages/Artist.vue"),
