@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { JsPlayerEvent } from "@splayer/audio-engine";
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   reset: [] as Array<() => void>,
+  created: [] as Array<() => void>,
+  nativeEvent: (_event: JsPlayerEvent) => {},
+  dynamicIslandState: vi.fn(),
   transition: vi.fn(),
   load: vi.fn(),
   stop: vi.fn(),
@@ -38,10 +42,14 @@ vi.mock("@main/services/engine", () => {
     getVolume: () => 1,
     getCoverRaw: () => null,
     getStatus: () => ({ state: "playing" }),
+    onEvent: (callback: typeof mocks.nativeEvent) => {
+      mocks.nativeEvent = callback;
+    },
   };
   return {
     getPlayer: () => player,
-    onPlayerCreated: vi.fn(),
+    onPlayerCreated: (callback: (inst: typeof player) => void) =>
+      mocks.created.push(() => callback(player)),
     onPlayerReset: (callback: () => void) => mocks.reset.push(callback),
     resetPlayer: () => mocks.reset.forEach((callback) => callback()),
   };
@@ -67,7 +75,10 @@ vi.mock("@main/services/media", () => ({
     mocks.mediaEvent = callback;
   },
 }));
-vi.mock("@main/services/nowPlaying", () => ({ prepareTransition: mocks.prepareTransition }));
+vi.mock("@main/services/nowPlaying", () => ({
+  prepareTransition: mocks.prepareTransition,
+  onPlayStateChange: vi.fn(),
+}));
 vi.mock("@main/services/device", () => ({
   cancelPendingReinit: vi.fn(),
   startDeviceMonitoring: vi.fn(),
@@ -79,22 +90,27 @@ vi.mock("@main/utils/encoding", () => ({}));
 vi.mock("@main/utils/protocol", () => ({ toCacheUrl: () => undefined }));
 vi.mock("@main/utils/config", () => ({ appName: "SPlayer", getSongCacheDir: () => "cache" }));
 vi.mock("@main/utils/fetchBytes", () => ({}));
-vi.mock("@main/utils/powerBlocker", () => ({}));
+vi.mock("@main/utils/powerBlocker", () => ({ updatePowerBlocker: vi.fn() }));
 vi.mock("@main/services/lastfm", () => ({
   onTrackLoaded: vi.fn(),
   onStopped: vi.fn(),
   onRepeatOneRestart: mocks.lastfmRestart,
+  onState: vi.fn(),
+  onEnded: vi.fn(),
 }));
 vi.mock("@main/services/neteaseScrobble", () => ({
   onTrackLoaded: vi.fn(),
   onStopped: vi.fn(),
   onRepeatOneRestart: mocks.scrobbleRestart,
+  onState: vi.fn(),
+  onEnded: vi.fn(),
 }));
 vi.mock("@main/services/streaming/playback", () => ({
   prepareStreamingPlayback: mocks.streamingPrepare,
   startStreamingPlayback: mocks.streamingStart,
   stopStreamingPlayback: mocks.streamingStop,
   onStreamingSeek: vi.fn(),
+  onStreamingState: vi.fn(),
 }));
 vi.mock("@main/services/streaming/adapters/resolve", () => ({
   invalidateStreamingSession: vi.fn(),
@@ -103,7 +119,11 @@ vi.mock("@main/services/songCache", () => ({}));
 vi.mock("@main/services/thumbar", () => ({ getThumbar: () => null }));
 vi.mock("@main/services/tray", () => ({ setTraySongName: vi.fn(), setTrayPlayState: vi.fn() }));
 vi.mock("@main/services/thumbnail", () => ({ setTaskbarThumbnailCover: vi.fn() }));
-vi.mock("@main/window", () => ({ getMainWindow: () => null }));
+vi.mock("@main/window", () => ({
+  getMainWindow: () => null,
+  syncDynamicIslandPlaybackState: mocks.dynamicIslandState,
+  setTaskbarProgress: vi.fn(),
+}));
 vi.mock("@main/store", () => ({ store: { get: () => false } }));
 
 const meta = { title: "Next", duration: 10, artist: "", album: "" };
@@ -134,12 +154,30 @@ describe("交接响应的主进程竞态保护", () => {
     vi.clearAllMocks();
     mocks.handlers.clear();
     mocks.reset.length = 0;
+    mocks.created.length = 0;
     mocks.seek.mockResolvedValue(undefined);
     mocks.load.mockResolvedValue(meta);
     mocks.streamingPrepare.mockReset().mockResolvedValue(undefined);
     mocks.streamingStop.mockResolvedValue(undefined);
     const { registerPlayerIpc } = await import("./player");
     registerPlayerIpc();
+  });
+
+  it.each(["playing", "paused", "stopped", "loading", "idle"])(
+    "原生 %s 状态同步到灵动岛",
+    (state) => {
+      mocks.created[0]();
+      mocks.nativeEvent({ type: "stateChanged", state });
+      expect(mocks.dynamicIslandState).toHaveBeenCalledWith(state);
+    },
+  );
+
+  it("曲目结束和引擎重置也同步灵动岛状态", () => {
+    mocks.created[0]();
+    mocks.nativeEvent({ type: "ended" });
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped");
+    mocks.reset.forEach((callback) => callback());
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("idle");
   });
 
   it.each(["停止", "跳转", "重置", "加载新曲", "系统停止", "系统跳转"])(

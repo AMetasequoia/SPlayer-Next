@@ -8,8 +8,11 @@ import { isMac } from "@main/utils/config";
 import { setTrayDynamicIsland } from "@main/services/tray";
 import { isAppQuitting } from "@main/utils/lifecycle";
 import { DYNAMIC_ISLAND_BASE_HEIGHT } from "@shared/defaults/settings";
+import type { PlayerState } from "@shared/types/player";
 
 let dynamicIslandWindow: BrowserWindow | null = null;
+let readyToShow = false;
+let playbackState: PlayerState = "idle";
 
 /** 用户实测刘海物理宽度，按显示器 scaleFactor 换算成 Electron DIP */
 const NOTCH_PHYSICAL_WIDTH = 358;
@@ -194,8 +197,9 @@ const isCursorInsideBounds = (): boolean => {
   );
 };
 
+/** 仅在窗口可见时启动光标轮询 */
 const startCursorPolling = (): void => {
-  if (cursorPollTimer) return;
+  if (cursorPollTimer || !getDynamicIslandWindow()?.isVisible()) return;
   lastCursorInside = isCursorInsideBounds();
   dynamicIslandWindow?.webContents.send("dynamicIsland:cursorInside", lastCursorInside);
   cursorPollTimer = setInterval(() => {
@@ -221,6 +225,31 @@ const stopCursorPolling = (): void => {
     lastCursorInside = false;
     dynamicIslandWindow?.webContents.send("dynamicIsland:cursorInside", false);
   }
+};
+
+/** 根据播放状态临时隐藏窗口，不改变用户的启用状态或抢占焦点 */
+export const applyDynamicIslandPlaybackVisibility = (): void => {
+  const win = getDynamicIslandWindow();
+  if (!win || !readyToShow) return;
+  const config = store.get("dynamicIsland");
+  // 加载时保持原可见性，避免切歌闪烁
+  if (config.hideWhenPaused && playbackState === "loading") return;
+  if (config.hideWhenPaused && playbackState !== "playing") {
+    if (win.isVisible()) win.hide();
+    stopCursorPolling();
+  } else {
+    if (!win.isVisible()) win.showInactive();
+    if (config.nonOcclusive) startCursorPolling();
+  }
+};
+
+/**
+ * 同步原生播放状态，窗口关闭后不会自动重建
+ * @param state - 当前播放状态
+ */
+export const syncDynamicIslandPlaybackState = (state: PlayerState): void => {
+  playbackState = state;
+  applyDynamicIslandPlaybackVisibility();
 };
 
 /**
@@ -475,13 +504,16 @@ export const saveDynamicIslandState = (): void => {
   }
 };
 
-/** 创建灵动岛窗口，如果窗口已存在则显示并聚焦 */
+/**
+ * 创建灵动岛并按播放状态显示，已存在时复用窗口
+ * @returns 灵动岛窗口实例
+ */
 export const createDynamicIslandWindow = (): BrowserWindow => {
   if (dynamicIslandWindow && !dynamicIslandWindow.isDestroyed()) {
-    dynamicIslandWindow.show();
-    dynamicIslandWindow.focus();
+    applyDynamicIslandPlaybackVisibility();
     return dynamicIslandWindow;
   }
+  readyToShow = false;
   const config = store.get("dynamicIsland");
   const saved = store.get("windowStates.dynamicIsland");
   const fusionEnabled = isNotchFusionEnabled();
@@ -574,12 +606,11 @@ export const createDynamicIslandWindow = (): BrowserWindow => {
 
   dynamicIslandWindow.once("ready-to-show", () => {
     if (!dynamicIslandWindow) return;
-    dynamicIslandWindow.show();
-    dynamicIslandWindow.setAlwaysOnTop(config.alwaysOnTop, "screen-saver");
-    if (config.nonOcclusive) {
-      dynamicIslandWindow.setIgnoreMouseEvents(true, { forward: true });
-      startCursorPolling();
-    }
+    readyToShow = true;
+    const currentConfig = store.get("dynamicIsland");
+    dynamicIslandWindow.setAlwaysOnTop(currentConfig.alwaysOnTop, "screen-saver");
+    applyDynamicIslandNonOcclusive(currentConfig.nonOcclusive);
+    applyDynamicIslandPlaybackVisibility();
   });
 
   setTrayDynamicIsland(true);
@@ -589,6 +620,7 @@ export const createDynamicIslandWindow = (): BrowserWindow => {
   dynamicIslandWindow.on("closed", () => {
     stopCursorPolling();
     activeShapeWidth = null;
+    readyToShow = false;
     dynamicIslandWindow = null;
     lastBroadcastMode = null;
     setTrayDynamicIsland(false);

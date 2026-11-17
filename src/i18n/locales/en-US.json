@@ -1498,6 +1498,10 @@
       "label": "Enable Dynamic Island",
       "description": "Show a compact floating lyric window at the top of the screen; drag it anywhere"
     },
+    "dynamicIslandHideWhenPaused": {
+      "label": "Hide when paused",
+      "description": "Hide the Dynamic Island when playback is paused or stopped and show it again when playback resumes"
+    },
     "dynamicIslandScale": {
       "label": "Scale",
       "description": "Scale window height and font size together; 100% is the default size"

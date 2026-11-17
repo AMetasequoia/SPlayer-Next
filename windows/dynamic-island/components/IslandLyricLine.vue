@@ -46,8 +46,9 @@ const resetRenderCache = (): void => {
   wordRefs.length = 0;
 };
 
+/** 可见时更新逐字进度，隐藏后停止渲染 */
 const renderFrame = (): void => {
-  if (!props.wordByWord) {
+  if (!props.wordByWord || document.hidden) {
     rafId = 0;
     return;
   }
@@ -64,8 +65,9 @@ const renderFrame = (): void => {
   rafId = requestAnimationFrame(renderFrame);
 };
 
+/** 仅为可见且启用逐字高亮的歌词启动动画 */
 const startRenderLoop = (): void => {
-  if (rafId === 0 && props.wordByWord) {
+  if (rafId === 0 && props.wordByWord && !document.hidden) {
     rafId = requestAnimationFrame(renderFrame);
   }
 };
@@ -76,6 +78,11 @@ const stopRenderLoop = (): void => {
     rafId = 0;
   }
 };
+
+useEventListener(document, "visibilitychange", () => {
+  if (document.hidden) stopRenderLoop();
+  else startRenderLoop();
+});
 
 watch(
   () => props.wordByWord,

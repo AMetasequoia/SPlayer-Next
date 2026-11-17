@@ -4,6 +4,7 @@ import { wsBroadcast } from "@main/server/broadcast";
 import * as nowPlaying from "@main/services/nowPlaying";
 import type { NowPlayingUpdatePayload } from "@shared/types/nowPlaying";
 
+/** 注册歌词窗口同步，隐藏窗口仍接收低频状态变化 */
 export const registerNowPlayingIpc = (): void => {
   // 渲染进程同步当前播放状态到主进程
   ipcMain.on("nowPlaying:update", (_event, payload: NowPlayingUpdatePayload) => {
@@ -28,7 +29,9 @@ export const registerNowPlayingIpc = (): void => {
     broadcast("nowPlaying:lyric-change", snap);
     wsBroadcast({ type: "lyric", data: { source: snap.source, lyric: snap.lyric } });
   });
-  nowPlaying.onPositionSync((data) => broadcast("nowPlaying:position-sync", data, true));
+  nowPlaying.onPositionSync((data, visibleOnly) =>
+    broadcast("nowPlaying:position-sync", data, visibleOnly),
+  );
   nowPlaying.onLyricOffsetChange((data) => {
     broadcast("nowPlaying:lyric-offset-change", data);
     wsBroadcast({ type: "lyricOffset", data });

@@ -15,8 +15,8 @@ type NowPlayingEvents = {
   "track-change": [{ track: Track | null }];
   /** 歌词内容变化 */
   "lyric-change": [NowPlayingSnapshot];
-  /** 播放位置锚点 */
-  "position-sync": [NowPlayingPositionSync];
+  /** 播放锚点与可见性过滤标记，低频状态变化不应被过滤 */
+  "position-sync": [data: NowPlayingPositionSync, visibleOnly: boolean];
   /** 当前曲目歌词偏移变化 */
   "lyric-offset-change": [NowPlayingLyricOffsetSync];
 };
@@ -134,13 +134,17 @@ export const onPosition = (positionMs: number, isPlaying: boolean): void => {
   lastPositionAt = Date.now();
   playing = isPlaying;
   if (isPlaying) playState = "playing";
-  emitter.emit("position-sync", {
-    position: positionMs,
-    playing: isPlaying,
-    state: playState,
-    speed: playSpeed,
-    sendTimestamp: lastPositionAt,
-  });
+  emitter.emit(
+    "position-sync",
+    {
+      position: positionMs,
+      playing: isPlaying,
+      state: playState,
+      speed: playSpeed,
+      sendTimestamp: lastPositionAt,
+    },
+    true,
+  );
 };
 
 /**
@@ -150,14 +154,18 @@ export const onPosition = (positionMs: number, isPlaying: boolean): void => {
 export const onPlayStateChange = (state: PlayerState): void => {
   playState = state;
   playing = state === "playing";
-  emitter.emit("position-sync", {
-    position: lastPosition,
-    playing,
-    state,
-    speed: playSpeed,
-    // 暂停态接收端不补偿延迟，恢复态不能用陈旧时间戳，故取当前时刻
-    sendTimestamp: Date.now(),
-  });
+  emitter.emit(
+    "position-sync",
+    {
+      position: lastPosition,
+      playing,
+      state,
+      speed: playSpeed,
+      // 暂停态接收端不补偿延迟，恢复态不能用陈旧时间戳，故取当前时刻
+      sendTimestamp: Date.now(),
+    },
+    false,
+  );
 };
 
 /**
@@ -168,13 +176,17 @@ export const onPlayStateChange = (state: PlayerState): void => {
  */
 export const onSpeedChange = (speed: number): void => {
   playSpeed = Number.isFinite(speed) ? speed : 1.0;
-  emitter.emit("position-sync", {
-    position: lastPosition,
-    playing,
-    state: playState,
-    speed: playSpeed,
-    sendTimestamp: lastPositionAt || Date.now(),
-  });
+  emitter.emit(
+    "position-sync",
+    {
+      position: lastPosition,
+      playing,
+      state: playState,
+      speed: playSpeed,
+      sendTimestamp: lastPositionAt || Date.now(),
+    },
+    false,
+  );
 };
 
 /**
@@ -265,8 +277,14 @@ export const onLyricChange = (listener: (snap: NowPlayingSnapshot) => void): (()
   return () => emitter.off("lyric-change", listener);
 };
 
-/** 订阅播放位置锚点 */
-export const onPositionSync = (listener: (data: NowPlayingPositionSync) => void): (() => void) => {
+/**
+ * 订阅播放锚点，区分高频进度与低频状态通知
+ * @param listener - 接收锚点和是否仅推送可见窗口的标记
+ * @returns 取消订阅方法
+ */
+export const onPositionSync = (
+  listener: (data: NowPlayingPositionSync, visibleOnly: boolean) => void,
+): (() => void) => {
   emitter.on("position-sync", listener);
   return () => emitter.off("position-sync", listener);
 };

@@ -27,6 +27,7 @@ import {
   applyDynamicIslandSnapCentered,
   applyDynamicIslandNotchFusion,
   applyDynamicIslandNonOcclusive,
+  applyDynamicIslandPlaybackVisibility,
   applyTaskbarLyricLayout,
 } from "@main/window";
 import { broadcast } from "@main/utils/broadcast";
@@ -117,6 +118,9 @@ const applyConfigChange = (keyPath: string, value: unknown): void => {
     case "dynamicIsland.notchFusion":
       applyDynamicIslandNotchFusion(value as boolean);
       break;
+    case "dynamicIsland.hideWhenPaused":
+      applyDynamicIslandPlaybackVisibility();
+      break;
     case "dynamicIsland.nonOcclusive":
       applyDynamicIslandNonOcclusive(value as boolean);
       break;
@@ -165,6 +169,7 @@ export const registerConfigIpc = (): void => {
   ipcMain.handle("config:reset", () => {
     if (getUpdateState().phase === "installing") throw new Error("安装启动中，无法重置配置");
     store.clear();
+    applyDynamicIslandPlaybackVisibility();
     syncUpdateChannel();
     refreshPowerBlocker();
   });
@@ -173,6 +178,7 @@ export const registerConfigIpc = (): void => {
   ipcMain.handle("config:replaceAll", (_event, payload: unknown) => {
     if (getUpdateState().phase === "installing") throw new Error("安装启动中，无法替换配置");
     store.replaceAll(payload);
+    applyDynamicIslandPlaybackVisibility();
     syncUpdateChannel();
     refreshPowerBlocker();
   });

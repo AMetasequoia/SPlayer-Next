@@ -12,6 +12,7 @@ import { isMac } from "@/utils/config";
 import { formatArtists } from "@shared/utils/track";
 
 const config = reactive<DynamicIslandSettings>({
+  hideWhenPaused: true,
   scale: 1,
   fontWeight: 500,
   fontFamily: "",

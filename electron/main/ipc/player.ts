@@ -39,7 +39,7 @@ import {
   setTrayLikeState,
 } from "@main/services/tray";
 import { setTaskbarThumbnailCover } from "@main/services/thumbnail";
-import { getMainWindow, setTaskbarProgress } from "@main/window";
+import { getMainWindow, setTaskbarProgress, syncDynamicIslandPlaybackState } from "@main/window";
 import { store } from "@main/store";
 import { appName, getSongCacheDir } from "@main/utils/config";
 import * as songCache from "@main/services/songCache";
@@ -138,6 +138,7 @@ const registerNativeEvents = (inst: InstanceType<AudioEngineModule["AudioPlayer"
     switch (event.type) {
       case "stateChanged": {
         const state = (event.state ?? "idle") as PlayerState;
+        syncDynamicIslandPlaybackState(state);
         updatePowerBlocker(state);
         // 更新缩略图工具栏和托盘菜单
         getThumbar()?.updateThumbar(state === "playing");
@@ -175,6 +176,7 @@ const registerNativeEvents = (inst: InstanceType<AudioEngineModule["AudioPlayer"
         break;
       }
       case "ended": {
+        syncDynamicIslandPlaybackState("stopped");
         updatePowerBlocker("stopped");
         sendToMain("player:event", { type: "ended" });
         wsBroadcast({ type: "ended" });
@@ -283,6 +285,7 @@ const registerNativeEvents = (inst: InstanceType<AudioEngineModule["AudioPlayer"
 let loadSeq = 0;
 let streamingServerId: string | undefined;
 onPlayerReset(() => {
+  syncDynamicIslandPlaybackState("idle");
   loadSeq++;
   void streamingPlayback.stopStreamingPlayback();
 });

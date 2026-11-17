@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   clear: vi.fn(),
   replaceAll: vi.fn(),
   sync: vi.fn(),
+  get: vi.fn(() => ({ hideWhenPaused: false })),
+  playbackVisibility: vi.fn(),
+  broadcast: vi.fn(),
 }));
 vi.mock("electron", () => ({
   dialog: {},
@@ -16,7 +19,7 @@ vi.mock("electron", () => ({
   },
 }));
 vi.mock("@main/store", () => ({
-  store: { set: mocks.set, clear: mocks.clear, replaceAll: mocks.replaceAll },
+  store: { set: mocks.set, clear: mocks.clear, replaceAll: mocks.replaceAll, get: mocks.get },
 }));
 vi.mock("@main/services/updater", () => ({
   getUpdateState: () => ({ phase: mocks.phase }),
@@ -25,11 +28,13 @@ vi.mock("@main/services/updater", () => ({
 vi.mock("@main/utils/logger", () => ({ systemLog: {} }));
 vi.mock("@main/utils/powerBlocker", () => ({ refreshPowerBlocker: vi.fn() }));
 vi.mock("@main/utils/config", () => ({ isWin: true }));
-vi.mock("@main/utils/broadcast", () => ({}));
+vi.mock("@main/utils/broadcast", () => ({ broadcast: mocks.broadcast }));
 vi.mock("@main/services/media", () => ({}));
 vi.mock("@main/services/lastfm", () => ({}));
 vi.mock("@main/services/engine", () => ({}));
-vi.mock("@main/window", () => ({}));
+vi.mock("@main/window", () => ({
+  applyDynamicIslandPlaybackVisibility: mocks.playbackVisibility,
+}));
 vi.mock("@main/server", () => ({}));
 vi.mock("@main/services/mcp/http", () => ({}));
 vi.mock("@main/services/orpheus", () => ({}));
@@ -59,6 +64,23 @@ describe("更新配置入口", () => {
     mocks.phase = "installing";
     expect(() => invoke(...args)).toThrow("安装启动中");
     expect(mocks[method]).toHaveBeenCalledOnce();
+  });
+
+  it.each(["config:reset", "config:replaceAll"])("%s 后重新应用暂停隐藏规则", (channel) => {
+    mocks.handlers.get(channel)!(null, {});
+    expect(mocks.playbackVisibility).toHaveBeenCalledOnce();
+  });
+
+  it("暂停隐藏设置写入后立即调整窗口，并广播配置", () => {
+    mocks.handlers.get("config:set")!(null, "dynamicIsland.hideWhenPaused", false);
+    expect(mocks.set).toHaveBeenCalledWith("dynamicIsland.hideWhenPaused", false);
+    expect(mocks.playbackVisibility).toHaveBeenCalledOnce();
+    expect(mocks.set.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.playbackVisibility.mock.invocationCallOrder[0],
+    );
+    expect(mocks.broadcast).toHaveBeenCalledWith("dynamicIsland:configChange", {
+      hideWhenPaused: false,
+    });
   });
 
   it("非法通道不能写入配置", () => {

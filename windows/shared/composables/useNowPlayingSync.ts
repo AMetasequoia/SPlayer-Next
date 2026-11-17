@@ -31,6 +31,8 @@ export interface NowPlayingSync {
 /**
  * 播放状态同步
  * 拉取 / 订阅快照、维护播放锚点、RAF 高频更新 currentMs 与 primaryIndex
+ * @param options - 歌词行选择策略及日志标识
+ * @returns 当前歌曲、歌词和播放状态
  */
 export const useNowPlayingSync = (options: NowPlayingSyncOptions): NowPlayingSync => {
   const { pickIndex, logTag } = options;
@@ -107,23 +109,41 @@ export const useNowPlayingSync = (options: NowPlayingSyncOptions): NowPlayingSyn
     if (idx !== primaryIndex.value) primaryIndex.value = idx;
   };
 
+  /** 可见时推进歌词时间轴，隐藏后停止逐帧计算 */
   const tick = (): void => {
+    if (document.hidden) {
+      rafId = null;
+      return;
+    }
     syncOnce();
     rafId = playing.value ? requestAnimationFrame(tick) : null;
   };
 
+  /** 仅为可见窗口安排下一帧 */
   const kickTick = (): void => {
-    if (rafId !== null) return;
+    if (rafId !== null || document.hidden) return;
     rafId = requestAnimationFrame(tick);
   };
 
+  useEventListener(document, "visibilitychange", () => {
+    if (document.hidden && rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    } else {
+      kickTick();
+    }
+  });
+
   const unsubscribers: Array<() => void> = [];
+  let disposed = false;
 
   onMounted(async () => {
     try {
       const snap = await window.api.nowPlaying.requestSnapshot();
+      if (disposed) return;
       applySnapshot(snap);
     } catch (error) {
+      if (disposed) return;
       console.error(`[${logTag}] requestSnapshot failed`, error);
     }
 
@@ -148,6 +168,7 @@ export const useNowPlayingSync = (options: NowPlayingSyncOptions): NowPlayingSyn
   });
 
   onBeforeUnmount(() => {
+    disposed = true;
     if (rafId !== null) {
       cancelAnimationFrame(rafId);
       rafId = null;

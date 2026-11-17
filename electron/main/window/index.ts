@@ -43,6 +43,8 @@ export {
   applyDynamicIslandSnapCentered,
   applyDynamicIslandNotchFusion,
   applyDynamicIslandNonOcclusive,
+  applyDynamicIslandPlaybackVisibility,
+  syncDynamicIslandPlaybackState,
   moveDynamicIslandWindow,
   saveDynamicIslandState,
 } from "./dynamicIsland";

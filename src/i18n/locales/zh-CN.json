@@ -1498,6 +1498,10 @@
       "label": "开启灵动岛",
       "description": "在屏幕顶部显示一个简洁的悬浮歌词窗口，可拖离至任意位置"
     },
+    "dynamicIslandHideWhenPaused": {
+      "label": "暂停时隐藏",
+      "description": "暂停或停止播放时隐藏灵动岛，恢复播放时自动显示"
+    },
     "dynamicIslandScale": {
       "label": "缩放比例",
       "description": "窗口高度与字号同步缩放，100% 为默认大小"
