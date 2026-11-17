@@ -9,7 +9,7 @@ import { useContinueListening } from "@/composables/home/useContinueListening";
 import { useQuickActions } from "@/composables/home/useQuickActions";
 import { useHomeDiscover } from "@/composables/home/useHomeDiscover";
 import { useFloatingPlayerBar } from "@/composables/useFloatingPlayerBar";
-import { navigateToPlaylist, navigateToArtist, navigateToAlbum } from "@/utils/navigate";
+import { navigateToPlaylist } from "@/utils/navigate";
 import * as player from "@/core/player";
 
 const { t } = useI18n();
@@ -36,14 +36,12 @@ const {
   load: loadContinue,
 } = useContinueListening();
 
-/** 推荐内容：推荐歌单 / 雷达 / 歌手 / 新碟 */
+/** 推荐内容：推荐歌单 / 雷达 */
 const {
   recommendPlaylists,
   recommendTitle,
   recommendSubtitle,
   radarPlaylists,
-  artists,
-  newAlbums,
   load: loadDiscover,
 } = useHomeDiscover();
 
@@ -63,16 +61,6 @@ const trackNo = (index: number): string => String(index + 1).padStart(2, "0");
 /** 打开歌单详情 */
 const openPlaylist = (item: CoverItem): void => {
   navigateToPlaylist(item.id, { source: "netease", name: item.title });
-};
-
-/** 打开歌手页 */
-const openArtist = (item: CoverItem): void => {
-  navigateToArtist(item.title, { source: "netease", artistId: item.id });
-};
-
-/** 打开专辑页 */
-const openAlbum = (item: CoverItem): void => {
-  navigateToAlbum(item.title, { source: "netease", albumId: item.id });
 };
 </script>
 
@@ -244,29 +232,6 @@ const openAlbum = (item: CoverItem): void => {
           <p class="mt-0.5 text-xs text-on-surface-variant/50">{{ t("home.radar.subtitle") }}</p>
         </div>
         <CoverList :items="radarPlaylists" :virtual="false" :gap="16" @click="openPlaylist" />
-      </section>
-      <!-- 歌手推荐 -->
-      <section v-if="artists.length > 0" class="flex flex-col gap-3">
-        <div>
-          <h3 class="text-lg font-semibold text-on-surface">{{ t("home.artists.title") }}</h3>
-          <p class="mt-0.5 text-xs text-on-surface-variant/50">{{ t("home.artists.subtitle") }}</p>
-        </div>
-        <CoverList
-          :items="artists"
-          type="artist"
-          :min-size="120"
-          :virtual="false"
-          :gap="16"
-          @click="openArtist"
-        />
-      </section>
-      <!-- 新碟上架 -->
-      <section v-if="newAlbums.length > 0" class="flex flex-col gap-3">
-        <div>
-          <h3 class="text-lg font-semibold text-on-surface">{{ t("home.albums.title") }}</h3>
-          <p class="mt-0.5 text-xs text-on-surface-variant/50">{{ t("home.albums.subtitle") }}</p>
-        </div>
-        <CoverList :items="newAlbums" :virtual="false" :gap="16" @click="openAlbum" />
       </section>
     </div>
   </div>

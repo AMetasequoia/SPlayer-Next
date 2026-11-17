@@ -1,11 +1,6 @@
 import type { CoverItem } from "@/types/artist";
 import { useUserStore } from "@/stores/user";
-import {
-  fetchRecommendPlaylists,
-  fetchRadarPlaylists,
-  fetchArtists,
-  fetchNewAlbums,
-} from "@/apis/recommend/netease";
+import { fetchRecommendPlaylists, fetchRadarPlaylists } from "@/apis/recommend/netease";
 
 /** 首页推荐内容缓存有效期 */
 const CACHE_TTL = 30 * 60 * 1000;
@@ -13,17 +8,20 @@ const CACHE_TTL = 30 * 60 * 1000;
 /** 首页推荐内容缓存 */
 interface DiscoverCache {
   at: number;
-  loggedIn: boolean;
+  userId: number | null;
   recommend: CoverItem[];
   radar: CoverItem[];
-  artists: CoverItem[];
-  albums: CoverItem[];
 }
 
 /** 模块级缓存，跨页面 / 重新挂载复用 */
 let cache: DiscoverCache | null = null;
 
-/** 包裹拉取：失败记日志并回退空数组，单区块失败不影响整体 */
+/**
+ * 单区块失败不影响其他推荐
+ * @param label - 日志中的区块名
+ * @param task - 推荐请求
+ * @returns 推荐列表，失败时为空
+ */
 const safe = (label: string, task: Promise<CoverItem[]>): Promise<CoverItem[]> =>
   task.catch((error) => {
     console.warn(`[home] ${label} failed:`, error);
@@ -33,21 +31,18 @@ const safe = (label: string, task: Promise<CoverItem[]>): Promise<CoverItem[]> =
 /**
  * 首页推荐内容
  *
- * 聚合「推荐歌单 / 雷达 / 歌手 / 新碟」四个区块，统一拉取与缓存
- * 命中缓存（30 分钟内、登录态一致）直接复用，避免重新挂载首页时重复请求
+ * 仅拉取推荐歌单与雷达，按账号复用 30 分钟内的单份缓存
+ * @returns 推荐区块与加载方法
  */
 export const useHomeDiscover = () => {
   const { t } = useI18n();
   const user = useUserStore();
+  let loadVersion = 0;
 
   /** 推荐歌单 / 专属歌单 */
   const recommendPlaylists = shallowRef<CoverItem[]>([]);
   /** 雷达歌单 */
   const radarPlaylists = shallowRef<CoverItem[]>([]);
-  /** 歌手推荐 */
-  const artists = shallowRef<CoverItem[]>([]);
-  /** 新碟上架 */
-  const newAlbums = shallowRef<CoverItem[]>([]);
 
   /** 推荐歌单标题 */
   const recommendTitle = computed(() =>
@@ -58,46 +53,51 @@ export const useHomeDiscover = () => {
     user.isLoggedIn ? t("home.recommend.subtitle") : t("home.recommend.subtitleGuest"),
   );
 
-  /** 用缓存填充各区块 */
+  /**
+   * 应用当前账号的推荐缓存
+   * @param data - 缓存内容
+   */
   const apply = (data: DiscoverCache): void => {
     recommendPlaylists.value = data.recommend;
     radarPlaylists.value = data.radar;
-    artists.value = data.artists;
-    newAlbums.value = data.albums;
   };
 
   /** 拉取首页推荐内容 */
   const load = async (): Promise<void> => {
+    const version = ++loadVersion;
+    const userId = user.profile?.userId ?? null;
     const loggedIn = user.isLoggedIn;
-    if (cache && cache.loggedIn === loggedIn && Date.now() - cache.at < CACHE_TTL) {
+    if (cache && cache.userId === userId && Date.now() - cache.at < CACHE_TTL) {
       apply(cache);
       return;
     }
-    const [recommend, radar, artistList, albums] = await Promise.all([
+    const [recommend, radar] = await Promise.all([
       safe("recommend playlists", fetchRecommendPlaylists(loggedIn)),
       loggedIn ? safe("radar playlists", fetchRadarPlaylists()) : Promise.resolve<CoverItem[]>([]),
-      safe("artists", fetchArtists()),
-      safe("new albums", fetchNewAlbums()),
     ]);
-    cache = { at: Date.now(), loggedIn, recommend, radar, artists: artistList, albums };
+    if (version !== loadVersion || userId !== (user.profile?.userId ?? null)) return;
+    cache = { at: Date.now(), userId, recommend, radar };
     apply(cache);
   };
 
-  // 登录态变化
   watch(
-    () => user.isLoggedIn,
+    () => user.profile?.userId,
     () => {
+      recommendPlaylists.value = [];
+      radarPlaylists.value = [];
       void load();
     },
   );
+
+  onScopeDispose(() => {
+    loadVersion++;
+  });
 
   return {
     recommendPlaylists,
     recommendTitle,
     recommendSubtitle,
     radarPlaylists,
-    artists,
-    newAlbums,
     load,
   };
 };
