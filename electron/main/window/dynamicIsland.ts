@@ -1,10 +1,10 @@
-import { BrowserWindow, screen } from "electron";
+import { BrowserWindow, screen, systemPreferences } from "electron";
 import { join } from "path";
 import { is } from "@electron-toolkit/utils";
 import { createWindow } from "./create";
 import { store } from "@main/store";
 import { broadcast } from "@main/utils/broadcast";
-import { isMac } from "@main/utils/config";
+import { isMac, isWin } from "@main/utils/config";
 import { setTrayDynamicIsland } from "@main/services/tray";
 import { isAppQuitting } from "@main/utils/lifecycle";
 import { DYNAMIC_ISLAND_BASE_HEIGHT } from "@shared/defaults/settings";
@@ -13,6 +13,14 @@ import type { PlayerState } from "@shared/types/player";
 let dynamicIslandWindow: BrowserWindow | null = null;
 let readyToShow = false;
 let playbackState: PlayerState = "idle";
+let changingTrack = false;
+let playbackFadeTimer: NodeJS.Timeout | null = null;
+let playbackVisibilityTarget: boolean | null = null;
+
+/** 暂停隐藏略快于恢复显示，避免拖沓 */
+const PLAYBACK_FADE_OUT_MS = 160;
+const PLAYBACK_FADE_IN_MS = 220;
+const PLAYBACK_FADE_FRAME_MS = 16;
 
 /** 用户实测刘海物理宽度，按显示器 scaleFactor 换算成 Electron DIP */
 const NOTCH_PHYSICAL_WIDTH = 358;
@@ -199,7 +207,12 @@ const isCursorInsideBounds = (): boolean => {
 
 /** 仅在窗口可见时启动光标轮询 */
 const startCursorPolling = (): void => {
-  if (cursorPollTimer || !getDynamicIslandWindow()?.isVisible()) return;
+  if (
+    cursorPollTimer ||
+    playbackVisibilityTarget === false ||
+    !getDynamicIslandWindow()?.isVisible()
+  )
+    return;
   lastCursorInside = isCursorInsideBounds();
   dynamicIslandWindow?.webContents.send("dynamicIsland:cursorInside", lastCursorInside);
   cursorPollTimer = setInterval(() => {
@@ -215,16 +228,86 @@ const startCursorPolling = (): void => {
   }, CURSOR_POLL_MS);
 };
 
-const stopCursorPolling = (): void => {
+/**
+ * 停止光标轮询，淡出途中暂留悬停透明状态，避免内容闪回
+ * @param resetHover - 是否通知渲染端清除悬停状态
+ */
+const stopCursorPolling = (resetHover = true): void => {
   if (cursorPollTimer) {
     clearInterval(cursorPollTimer);
     cursorPollTimer = null;
   }
   // 离开时推一次 false，避免渲染端卡在 inside=true 状态
-  if (lastCursorInside) {
+  if (resetHover && lastCursorInside) {
     lastCursorInside = false;
-    dynamicIslandWindow?.webContents.send("dynamicIsland:cursorInside", false);
+    getDynamicIslandWindow()?.webContents.send("dynamicIsland:cursorInside", false);
   }
+};
+
+/** 取消上一轮显隐动效，防止迟到的隐藏覆盖恢复操作 */
+const cancelPlaybackFade = (): void => {
+  if (playbackFadeTimer !== null) {
+    clearInterval(playbackFadeTimer);
+    playbackFadeTimer = null;
+  }
+};
+
+/**
+ * 从当前透明度平滑切换窗口可见性，不移动窗口或抢焦点
+ * @param visible - 动效结束后的目标可见性
+ */
+const setPlaybackWindowVisible = (visible: boolean): void => {
+  const win = getDynamicIslandWindow();
+  if (!win) return;
+  // Linux 不支持窗口透明度，减少动态效果或远程会话也不启用逐帧动效
+  const animation = systemPreferences.getAnimationSettings();
+  const animate =
+    (isWin || isMac) && !animation.prefersReducedMotion && animation.shouldRenderRichAnimation;
+  if (animate && playbackFadeTimer !== null && playbackVisibilityTarget === visible) return;
+  cancelPlaybackFade();
+  playbackVisibilityTarget = visible;
+  if (!animate) {
+    if (!visible && win.isVisible()) win.hide();
+    if (!visible) stopCursorPolling();
+    if (isWin || isMac) win.setOpacity(1);
+    if (visible && !win.isVisible()) win.showInactive();
+    return;
+  }
+  if (!win.isVisible()) {
+    if (!visible) {
+      stopCursorPolling();
+      return;
+    }
+    win.setOpacity(0);
+    win.showInactive();
+  }
+  const from = win.getOpacity();
+  const target = visible ? 1 : 0;
+  if (from === target) {
+    if (!visible) {
+      win.hide();
+      stopCursorPolling();
+    }
+    return;
+  }
+  const duration = (visible ? PLAYBACK_FADE_IN_MS : PLAYBACK_FADE_OUT_MS) * Math.abs(target - from);
+  const startedAt = performance.now();
+  playbackFadeTimer = setInterval(() => {
+    if (win.isDestroyed() || getDynamicIslandWindow() !== win) {
+      cancelPlaybackFade();
+      return;
+    }
+    const progress = Math.min(1, (performance.now() - startedAt) / duration);
+    const eased = (1 - Math.cos(Math.PI * progress)) / 2;
+    win.setOpacity(from + (target - from) * eased);
+    if (progress < 1) return;
+    cancelPlaybackFade();
+    if (!visible) {
+      win.hide();
+      stopCursorPolling();
+      win.setOpacity(1);
+    }
+  }, PLAYBACK_FADE_FRAME_MS);
 };
 
 /** 根据播放状态临时隐藏窗口，不改变用户的启用状态或抢占焦点 */
@@ -232,13 +315,17 @@ export const applyDynamicIslandPlaybackVisibility = (): void => {
   const win = getDynamicIslandWindow();
   if (!win || !readyToShow) return;
   const config = store.get("dynamicIsland");
-  // 加载时保持原可见性，避免切歌闪烁
-  if (config.hideWhenPaused && playbackState === "loading") return;
+  // 曲尾和释放旧音源也属于切歌间隙，保持原可见性，不主动唤醒已隐藏的窗口
+  if (
+    config.hideWhenPaused &&
+    (playbackState === "loading" || (playbackState === "stopped" && changingTrack))
+  )
+    return;
   if (config.hideWhenPaused && playbackState !== "playing") {
-    if (win.isVisible()) win.hide();
-    stopCursorPolling();
+    stopCursorPolling(false);
+    setPlaybackWindowVisible(false);
   } else {
-    if (!win.isVisible()) win.showInactive();
+    setPlaybackWindowVisible(true);
     if (config.nonOcclusive) startCursorPolling();
   }
 };
@@ -246,8 +333,14 @@ export const applyDynamicIslandPlaybackVisibility = (): void => {
 /**
  * 同步原生播放状态，窗口关闭后不会自动重建
  * @param state - 当前播放状态
+ * @param forTrackChange - 显式标记切歌或停止；省略时让连续的停止、加载事件继承切歌状态
  */
-export const syncDynamicIslandPlaybackState = (state: PlayerState): void => {
+export const syncDynamicIslandPlaybackState = (
+  state: PlayerState,
+  forTrackChange?: boolean,
+): void => {
+  if (forTrackChange !== undefined) changingTrack = forTrackChange;
+  else if (state !== "stopped" && state !== "loading") changingTrack = false;
   playbackState = state;
   applyDynamicIslandPlaybackVisibility();
 };
@@ -514,6 +607,11 @@ export const createDynamicIslandWindow = (): BrowserWindow => {
     return dynamicIslandWindow;
   }
   readyToShow = false;
+  cancelPlaybackFade();
+  stopCursorPolling();
+  playbackVisibilityTarget = null;
+  activeShapeWidth = null;
+  lastBroadcastMode = null;
   const config = store.get("dynamicIsland");
   const saved = store.get("windowStates.dynamicIsland");
   const fusionEnabled = isNotchFusionEnabled();
@@ -595,20 +693,21 @@ export const createDynamicIslandWindow = (): BrowserWindow => {
     dynamicIslandWindow.loadFile(join(__dirname, "../renderer/windows/dynamic-island/index.html"));
   }
 
-  dynamicIslandWindow.webContents.on("did-finish-load", () => {
-    if (!dynamicIslandWindow) return;
-    dynamicIslandWindow.webContents.setZoomFactor(1.0);
+  const win = dynamicIslandWindow;
+  win.webContents.on("did-finish-load", () => {
+    if (dynamicIslandWindow !== win || win.isDestroyed()) return;
+    win.webContents.setZoomFactor(1.0);
     // 重播 mode，修复 HMR 刷新后 mode 丢失
     const currentSaved = store.get("windowStates.dynamicIsland");
     lastBroadcastMode = null;
     broadcastMode(currentSaved.mode === "floating" ? "floating" : "snapped");
   });
 
-  dynamicIslandWindow.once("ready-to-show", () => {
-    if (!dynamicIslandWindow) return;
+  win.once("ready-to-show", () => {
+    if (dynamicIslandWindow !== win || win.isDestroyed()) return;
     readyToShow = true;
     const currentConfig = store.get("dynamicIsland");
-    dynamicIslandWindow.setAlwaysOnTop(currentConfig.alwaysOnTop, "screen-saver");
+    win.setAlwaysOnTop(currentConfig.alwaysOnTop, "screen-saver");
     applyDynamicIslandNonOcclusive(currentConfig.nonOcclusive);
     applyDynamicIslandPlaybackVisibility();
   });
@@ -617,7 +716,10 @@ export const createDynamicIslandWindow = (): BrowserWindow => {
   broadcast("dynamicIsland:visibilityChange", true);
   store.set("windowStates.dynamicIsland.visible", true);
 
-  dynamicIslandWindow.on("closed", () => {
+  win.on("closed", () => {
+    if (dynamicIslandWindow !== win) return;
+    cancelPlaybackFade();
+    playbackVisibilityTarget = null;
     stopCursorPolling();
     activeShapeWidth = null;
     readyToShow = false;

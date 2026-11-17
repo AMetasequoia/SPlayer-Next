@@ -35,6 +35,7 @@ vi.mock("@main/services/engine", () => {
     transitionToPrepared: mocks.transition,
     load: mocks.load,
     stop: mocks.stop,
+    pause: vi.fn(),
     seek: mocks.seek,
     getDuration: () => 10,
     getPosition: () => 5,
@@ -175,9 +176,50 @@ describe("交接响应的主进程竞态保护", () => {
   it("曲目结束和引擎重置也同步灵动岛状态", () => {
     mocks.created[0]();
     mocks.nativeEvent({ type: "ended" });
-    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped");
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped", true);
     mocks.reset.forEach((callback) => callback());
     expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("idle");
+  });
+
+  it("仅切歌释放旧音源保留灵动岛，真正停止清除保留状态", async () => {
+    await invoke("player:stop", true);
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped", true);
+    await invoke("player:stop");
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped", false);
+    mocks.mediaEvent({ type: "Stop" });
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("stopped", false);
+  });
+
+  it("切歌间隙没有原生暂停事件也立即同步隐藏，包括系统暂停", async () => {
+    mocks.created[0]();
+    mocks.nativeEvent({ type: "ended" });
+    await invoke("player:pause");
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("paused");
+    mocks.mediaEvent({ type: "Pause" });
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("paused");
+  });
+
+  it("当前音源加载失败清除灵动岛的切歌保留状态", async () => {
+    mocks.load.mockRejectedValueOnce(new Error("decode failed"));
+    await invoke("player:stop", true);
+    await invoke("player:load", "broken.wav", {});
+    expect(mocks.dynamicIslandState).toHaveBeenLastCalledWith("idle");
+  });
+
+  it("旧加载迟到失败不隐藏新操作中的灵动岛", async () => {
+    let reject!: (error: Error) => void;
+    mocks.load.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const pending = invoke("player:load", "old.wav", {});
+    await invoke("player:stop", true);
+    mocks.dynamicIslandState.mockClear();
+    reject(new Error("decode failed"));
+    await pending;
+    expect(mocks.dynamicIslandState).not.toHaveBeenCalled();
   });
 
   it.each(["停止", "跳转", "重置", "加载新曲", "系统停止", "系统跳转"])(

@@ -134,6 +134,24 @@ describe("切歌消费真实预载", () => {
     });
   });
 
+  it("解析下一首音源前明确标记切歌停止，用户停止不携带该标记", async () => {
+    let resolveSource!: (value: unknown) => void;
+    mocks.consume.mockReturnValue(null);
+    mocks.resolve.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSource = resolve;
+        }),
+    );
+    const player = await import("./index");
+    const pending = player.playFrom([mocks.track as Track]);
+    expect(mocks.stop).toHaveBeenLastCalledWith(true);
+    resolveSource({ source: "https://music/next", fromCache: false, provider: "official" });
+    await pending;
+    await player.stop();
+    expect(mocks.stop).toHaveBeenLastCalledWith();
+  });
+
   it.each([false, true])("下载文件失效后只换源一次，预载=%s", async (preloaded) => {
     mocks.status.currentTrack = mocks.track;
     const downloaded = {

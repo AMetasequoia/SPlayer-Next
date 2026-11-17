@@ -378,7 +378,7 @@ const loadTrack = async (
   lyricLoader.beginLoad();
   resetForLoad(track.duration ?? 0, transitionResult?.data?.playback);
   // 已准备的槽位由原生 load 接管；提前 stop 会连同备用槽一起释放
-  if (!transitionResult && !preloaded?.preparedId) void window.api.player.stop();
+  if (!transitionResult && !preloaded?.preparedId) void window.api.player.stop(true);
   // 是否可跳曲
   let shouldSkip = false;
   try {

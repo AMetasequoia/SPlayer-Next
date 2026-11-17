@@ -357,8 +357,12 @@ export interface PlayerApi {
   play: () => Promise<IpcResponse>;
   /** 暂停播放 */
   pause: () => Promise<IpcResponse>;
-  /** 停止播放 */
-  stop: () => Promise<IpcResponse>;
+  /**
+   * 停止播放并释放资源
+   * @param forTrackChange - 切歌释放旧音源时传 true，保持灵动岛原可见性
+   * @returns 停止结果
+   */
+  stop: (forTrackChange?: boolean) => Promise<IpcResponse>;
   /**
    * 跳转到指定位置，单曲循环重播需要同时开启统计轮次
    * @param positionMs - 目标位置，单位为毫秒

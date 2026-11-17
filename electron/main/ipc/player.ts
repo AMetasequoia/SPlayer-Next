@@ -176,7 +176,7 @@ const registerNativeEvents = (inst: InstanceType<AudioEngineModule["AudioPlayer"
         break;
       }
       case "ended": {
-        syncDynamicIslandPlaybackState("stopped");
+        syncDynamicIslandPlaybackState("stopped", true);
         updatePowerBlocker("stopped");
         sendToMain("player:event", { type: "ended" });
         wsBroadcast({ type: "ended" });
@@ -671,7 +671,10 @@ export const registerPlayerIpc = (): void => {
       );
       return result;
     } catch (error) {
-      if (seq === loadSeq) activeCueRange = null;
+      if (seq === loadSeq) {
+        activeCueRange = null;
+        syncDynamicIslandPlaybackState("idle");
+      }
       const code = classifyLoadError(error, source);
       // 解码失败的源指向歌曲缓存目录 → 文件已损坏，把这条缓存项作废
       if (
@@ -702,14 +705,16 @@ export const registerPlayerIpc = (): void => {
   ipcMain.handle("player:pause", () => {
     try {
       getPlayer().pause();
+      // 切歌间隙原生已停止，pause 不一定再发状态事件
+      syncDynamicIslandPlaybackState("paused");
       return { success: true };
     } catch (error) {
       return fail(ErrorCode.UNKNOWN, error);
     }
   });
 
-  // 停止播放并释放资源
-  ipcMain.handle("player:stop", () => {
+  // 停止播放并释放资源，切歌时保留灵动岛原可见性
+  ipcMain.handle("player:stop", (_event, forTrackChange = false) => {
     loadSeq++;
     void streamingPlayback.stopStreamingPlayback();
     try {
@@ -719,6 +724,7 @@ export const registerPlayerIpc = (): void => {
       cancelPendingReinit();
       activeCueRange = null;
       setCurrentTransitionRange();
+      syncDynamicIslandPlaybackState("stopped", forTrackChange === true);
       getPlayer().stop();
       return { success: true };
     } catch (error) {
@@ -1039,12 +1045,14 @@ export const registerPlayerIpc = (): void => {
           break;
         case "Pause":
           inst.pause();
+          syncDynamicIslandPlaybackState("paused");
           break;
         case "Stop":
           loadSeq++;
           void streamingPlayback.stopStreamingPlayback();
           cancelPreparedTrack();
           setCurrentTransitionRange();
+          syncDynamicIslandPlaybackState("stopped", false);
           inst.stop();
           break;
         case "Seek":

@@ -164,8 +164,12 @@ const api = {
     play: () => ipcRenderer.invoke("player:play"),
     // 暂停播放
     pause: () => ipcRenderer.invoke("player:pause"),
-    // 停止播放
-    stop: () => ipcRenderer.invoke("player:stop"),
+    /**
+     * 停止播放并释放旧音源
+     * @param forTrackChange - 是否正在切歌，用于保持灵动岛原可见性
+     * @returns 停止结果
+     */
+    stop: (forTrackChange = false) => ipcRenderer.invoke("player:stop", forTrackChange),
     /**
      * 单曲重播需要在原生播放事件前开启新的统计轮次
      * @param position - 目标位置，单位为毫秒
