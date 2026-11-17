@@ -28,4 +28,17 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // 仅迁移旧默认退出键，保留自定义绑定和已有 Esc 用途
+    version: 3,
+    migrate: (data) => {
+      const bindings = data.hotkeys.bindings;
+      const closePlayer = bindings["view.closePlayer"];
+      if (closePlayer.inApp !== "CommandOrControl+Escape") return;
+      const escapeOccupied = Object.entries(bindings).some(
+        ([id, binding]) => id !== "view.closePlayer" && binding.inApp === "Escape",
+      );
+      if (!escapeOccupied) closePlayer.inApp = "Escape";
+    },
+  },
 ];

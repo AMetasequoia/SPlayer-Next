@@ -55,6 +55,8 @@ const recorder = useHotkeyRecorder({
   isMac: isMac,
   // 避免单键（如 A / Space）被全局占用
   requireModifier: () => recordingTarget.value?.scope === "global",
+  allowEscape: () =>
+    recordingTarget.value?.id === "view.closePlayer" && recordingTarget.value.scope === "inApp",
   onConfirm: async (accel) => {
     const target = recordingTarget.value;
     if (!target) return;

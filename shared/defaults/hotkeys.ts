@@ -118,7 +118,7 @@ export const HOTKEY_ACTIONS: HotkeyActionMeta[] = [
   {
     id: "view.closePlayer",
     labelKey: "settings.hotkeys.actions.closePlayer",
-    defaultBinding: { inApp: "CommandOrControl+Escape", global: null },
+    defaultBinding: { inApp: "Escape", global: null },
     allowGlobal: false,
   },
   {

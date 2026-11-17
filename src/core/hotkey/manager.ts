@@ -13,6 +13,7 @@ import { isMac } from "@/utils/config";
 import { parseAccelerator, matchParsed, type ParsedAccelerator } from "@shared/utils/accelerator";
 import type { HotkeyActionId } from "@shared/types/hotkey";
 import { buildRegistry, dispatch } from "./registry";
+import { isHotkeyRecording } from "./recorder";
 
 /**
  * 焦点元素是否吃掉快捷键
@@ -58,10 +59,19 @@ const REPEATABLE_ACTIONS = new Set<HotkeyActionId>([
   "player.seekBack",
 ]);
 
-/** 全局 keydown 处理 */
+/**
+ * 分派应用内按键，录入和浮层退出优先于播放界面退出
+ * @param event - 当前键盘事件
+ */
 const onKeyDown = (event: KeyboardEvent): void => {
-  if (event.isComposing) return;
+  if (event.defaultPrevented || event.isComposing || isHotkeyRecording()) return;
   if (isInputFocused(event)) return;
+  if (
+    event.code === "Escape" &&
+    document.querySelector('[data-dismissable-layer][data-state="open"]')
+  ) {
+    return;
+  }
   for (const entry of compiled) {
     if (matchParsed(event, entry.parsed)) {
       // 长按只对调整类动作生效，避免播放/暂停、切歌等被连续触发
