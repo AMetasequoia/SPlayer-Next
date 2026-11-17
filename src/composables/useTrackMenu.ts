@@ -49,6 +49,8 @@ export interface TrackMenuOptions {
   onDownload?: (track: Track, quality?: QualityLevel) => void;
   /** 从云盘删除回调 */
   onRemoveFromCloud?: (track: Track) => void;
+  /** 纠正云盘歌曲关联 */
+  onMatchCloud?: (track: Track) => void;
 }
 
 /**
@@ -145,6 +147,13 @@ export const useTrackMenu = (
         icon: markRaw(IconTrash2),
         separator: !(isPlaylist && canRemove),
         show: isLocal && !isCue,
+      },
+      {
+        key: "matchCloud",
+        label: t("cloud.match.action"),
+        icon: markRaw(IconSquarePen),
+        separator: true,
+        show: showCloudRemove && source === "netease" && !!options.onMatchCloud,
       },
       {
         key: "removeFromCloud",
@@ -277,6 +286,9 @@ export const useTrackMenu = (
         break;
       case "editTags":
         options.onEditTags?.(current);
+        break;
+      case "matchCloud":
+        options.onMatchCloud?.(current);
         break;
       case "removeFromCloud":
         options.onRemoveFromCloud?.(current);

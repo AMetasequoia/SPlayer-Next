@@ -323,7 +323,7 @@ const discItemHeights = computed(() => {
  * @returns 行容器的 class 列表
  */
 const trackRowClass = (item: Track): string[] => {
-  const selected = batch.active.value && batch.selectedIds.value.has(item.id);
+  const selected = batch.active.value && batch.selectedIds.value.has(batch.getItemKey(item));
   const playing = playingId.value === item.id;
 
   if (isCompactList.value) {
@@ -363,6 +363,10 @@ const {
 const tagEditorOpen = ref(false);
 const tagEditorTrack = shallowRef<Track | null>(null);
 
+/** 云盘纠正弹窗保留打开时的曲目，避免右键目标变化影响在途操作 */
+const cloudMatchOpen = ref(false);
+const cloudMatchTrack = shallowRef<Track | null>(null);
+
 /** 下载 */
 const { enqueue: enqueueDownload } = useDownload();
 
@@ -376,6 +380,10 @@ const { items: contextMenuItems, handleSelect: onContextMenu } = useTrackMenu(co
   onRemove: (track) => batch.requestDelete([track], "remove"),
   onDeleteFile: (track) => batch.requestDelete([track], "file"),
   onRemoveFromCloud: (track) => batch.requestDelete([track], "cloud"),
+  onMatchCloud: (track) => {
+    cloudMatchTrack.value = track;
+    cloudMatchOpen.value = true;
+  },
   onEditTags: (track) => {
     tagEditorTrack.value = track;
     tagEditorOpen.value = true;
@@ -413,7 +421,7 @@ const onTrackDblClick = (item: Track, index: number): void => {
  */
 const onPlayClick = (item: Track, index: number): void => {
   if (batch.active.value) {
-    batch.toggle(item.id);
+    batch.toggle(batch.getItemKey(item));
     return;
   }
   if (playingId.value === item.id) {
@@ -466,7 +474,7 @@ defineExpose({
         :item-fixed="!discLayout"
         :exact-item-heights="discItemHeights"
         :padding-bottom="isFloatingPlayerBar ? PLAYER_BAR_GAP : 80"
-        :get-item-key="(item: Track) => item.id"
+        :get-item-key="batch.getItemKey"
         height="100%"
         @scroll="onScroll"
         @reach-bottom="emit('reachBottom')"
@@ -692,7 +700,7 @@ defineExpose({
             <div
               data-song-item
               :class="trackRowClass(item)"
-              @click="batch.active.value ? batch.toggle(item.id) : undefined"
+              @click="batch.active.value ? batch.toggle(batch.getItemKey(item)) : undefined"
               @dblclick="onTrackDblClick(item, index)"
               @contextmenu="contextTrack = item"
             >
@@ -712,9 +720,9 @@ defineExpose({
                 <!-- 多选模式 -->
                 <SCheckbox
                   v-if="batch.active.value"
-                  :checked="batch.selectedIds.value.has(item.id)"
+                  :checked="batch.selectedIds.value.has(batch.getItemKey(item))"
                   size="small"
-                  @update:checked="batch.toggle(item.id)"
+                  @update:checked="batch.toggle(batch.getItemKey(item))"
                   @click.stop
                 />
                 <!-- 普通模式 -->
@@ -967,5 +975,11 @@ defineExpose({
     <PlaylistPickerDialog v-model:open="pickerOpen" :mode="pickerMode" :tracks="pickerTracks" />
     <!-- 编辑元数据 -->
     <TagEditorDialog v-model:open="tagEditorOpen" :track="tagEditorTrack" />
+
+    <CloudMatchDialog
+      v-if="cloudMatchOpen && cloudMatchTrack"
+      v-model:open="cloudMatchOpen"
+      :track="cloudMatchTrack"
+    />
   </div>
 </template>

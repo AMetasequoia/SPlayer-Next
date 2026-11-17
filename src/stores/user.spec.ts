@@ -5,6 +5,7 @@ import { neteaseCall } from "@/apis/netease";
 const cache = vi.hoisted(() => ({
   getItem: vi.fn<(key: string) => Promise<unknown>>(async () => null),
   setItem: vi.fn<(key: string, value: unknown) => Promise<void>>(async () => undefined),
+  removeItem: vi.fn<(key: string) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock("localforage", () => ({
@@ -26,6 +27,7 @@ describe("平台用户会话与喜欢列表", () => {
     setActivePinia(createPinia());
     cache.getItem.mockReset().mockResolvedValue(null);
     cache.setItem.mockClear();
+    cache.removeItem.mockReset().mockResolvedValue(undefined);
     clearSession.mockClear();
     bodies = {
       login_status: { data: { code: 200, account: { id: 1 }, profile } },
@@ -43,6 +45,14 @@ describe("平台用户会话与喜欢列表", () => {
       song_detail: { code: 200, songs: [] },
       like_v1: { code: 200 },
       song_like: { code: 200 },
+      cloud_match: { code: 200 },
+      user_cloud_del: { code: 200 },
+      user_cloud: {
+        code: 200,
+        data: [{ songId: 1000, simpleSong: song(10) }],
+        count: 1,
+        hasMore: false,
+      },
     };
     call.mockReset().mockImplementation(async (_platform, name) => ({
       ok: true,
@@ -401,5 +411,234 @@ describe("平台用户会话与喜欢列表", () => {
     expect(store.isLiked("3")).toBe(false);
     expect(call.mock.calls.filter(([, name]) => name === "song_like")).toHaveLength(1);
     expect(call.mock.calls.some(([, name]) => name === "playlist_tracks")).toBe(false);
+  });
+
+  describe("云盘歌曲纠正", () => {
+    it("纠正后重新读取云盘身份，并将服务端结果保存到缓存", async () => {
+      const store = loggedInStore();
+      await store.ensureCloud();
+      expect(store.cloudTracks[0]).toMatchObject({ id: "10", cloudId: "1000" });
+      cache.setItem.mockClear();
+      bodies.user_cloud = {
+        code: 200,
+        data: [{ songId: 1001, simpleSong: song(20) }],
+        count: 1,
+        hasMore: false,
+      };
+
+      expect(await store.matchCloudTrack("1000", "20")).toBe(true);
+
+      expect(call).toHaveBeenCalledWith("netease", "cloud_match", {
+        uid: 1,
+        sid: "1000",
+        asid: "20",
+      });
+      expect(store.cloudTracks[0]).toMatchObject({ id: "20", cloudId: "1001", cloud: true });
+      expect(cache.removeItem).toHaveBeenCalledWith("cloud-tracks");
+      expect(cache.setItem).toHaveBeenCalledWith(
+        "cloud-tracks",
+        expect.objectContaining({
+          userId: 1,
+          tracks: [expect.objectContaining({ id: "20", cloudId: "1001" })],
+        }),
+      );
+    });
+
+    it("纠正被平台拒绝时保留原列表与缓存，不发起刷新", async () => {
+      const store = loggedInStore();
+      await store.ensureCloud();
+      const original = store.cloudTracks;
+      cache.setItem.mockClear();
+      call.mockClear();
+      bodies.cloud_match = { code: 400, message: "无法匹配该歌曲" };
+
+      await expect(store.matchCloudTrack("1000", "20")).rejects.toThrow("无法匹配该歌曲");
+
+      expect(store.cloudTracks).toBe(original);
+      expect(cache.removeItem).not.toHaveBeenCalled();
+      expect(cache.setItem).not.toHaveBeenCalled();
+      expect(call.mock.calls.some(([, name]) => name === "user_cloud")).toBe(false);
+    });
+
+    it("纠正成功但刷新失败时返回未刷新，不将旧列表重新落入缓存", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const store = loggedInStore();
+      await store.ensureCloud();
+      cache.setItem.mockClear();
+      bodies.user_cloud = { code: 502, message: "刷新失败" };
+
+      expect(await store.matchCloudTrack("1000", "20")).toBe(false);
+
+      expect(store.cloudTracks[0].id).toBe("10");
+      expect(cache.removeItem).toHaveBeenCalledWith("cloud-tracks");
+      expect(cache.setItem).not.toHaveBeenCalled();
+      expect(store.cloudLoading).toBe(false);
+    });
+
+    it("同一云盘条目的在途纠正只提交一次，完成后释放保护", async () => {
+      const store = loggedInStore();
+      let finish!: (value: unknown) => void;
+      call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      const first = store.matchCloudTrack("1000", "20");
+
+      await expect(store.matchCloudTrack("1000", "30")).rejects.toThrow("正在进行");
+      finish({ ok: true, body: { code: 200 } });
+      expect(await first).toBe(true);
+      expect(await store.matchCloudTrack("1000", "30")).toBe(true);
+      expect(call.mock.calls.filter(([, name]) => name === "cloud_match")).toHaveLength(2);
+    });
+
+    it("纠正失败后可以重新提交", async () => {
+      const store = loggedInStore();
+      bodies.cloud_match = { code: 400, message: "纠正失败" };
+      await expect(store.matchCloudTrack("1000", "20")).rejects.toThrow("纠正失败");
+      bodies.cloud_match = { code: 200 };
+
+      expect(await store.matchCloudTrack("1000", "20")).toBe(true);
+    });
+
+    it("旧云盘刷新晚于纠正完成时不能恢复旧条目", async () => {
+      const store = loggedInStore();
+      let finish!: (value: unknown) => void;
+      call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      const oldRefresh = store.refreshCloud();
+      bodies.user_cloud = {
+        code: 200,
+        data: [{ songId: 1001, simpleSong: song(20) }],
+        hasMore: false,
+        count: 1,
+      };
+
+      expect(await store.matchCloudTrack("1000", "20")).toBe(true);
+      finish({
+        ok: true,
+        body: { code: 200, data: [{ songId: 1000, simpleSong: song(10) }], hasMore: false },
+      });
+      expect(await oldRefresh).toBe(false);
+      expect(store.cloudTracks[0]).toMatchObject({ id: "20", cloudId: "1001" });
+      expect(cache.setItem).toHaveBeenCalledTimes(1);
+    });
+
+    it("旧账号纠正完成后不能刷新新账号列表或删除其缓存", async () => {
+      const store = loggedInStore();
+      let finish!: (value: unknown) => void;
+      call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      const pending = store.matchCloudTrack("1000", "20");
+      store.clearContent();
+      store.profile = { ...profile, userId: 2 };
+      finish({ ok: true, body: { code: 200 } });
+
+      await expect(pending).rejects.toThrow("平台账号已变更");
+      expect(store.cloudTracks).toEqual([]);
+      expect(cache.removeItem).not.toHaveBeenCalled();
+      expect(call.mock.calls.some(([, name]) => name === "user_cloud")).toBe(false);
+    });
+
+    it("清理旧缓存期间切换账号，不向新账号发布纠正结果", async () => {
+      const store = loggedInStore();
+      let finish!: () => void;
+      cache.removeItem.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+      const pending = store.matchCloudTrack("1000", "20");
+      await vi.waitFor(() => expect(cache.removeItem).toHaveBeenCalled());
+      store.clearContent();
+      store.profile = { ...profile, userId: 2 };
+      finish();
+
+      await expect(pending).rejects.toThrow("平台账号已变更");
+      expect(call.mock.calls.some(([, name]) => name === "user_cloud")).toBe(false);
+      expect(cache.setItem).not.toHaveBeenCalled();
+    });
+
+    it("纠正后的删除使用云盘身份，同一播放 ID 的另一条目不受影响", async () => {
+      const store = loggedInStore();
+      await store.ensureCloud();
+      store.cloudTracks = [
+        { ...store.cloudTracks[0], id: "20", cloudId: "1001" },
+        { ...store.cloudTracks[0], id: "20", cloudId: "1002" },
+      ];
+      store.cloudCount = 2;
+      await store.removeCloudTracks(["1001", "1001"]);
+      expect(call).toHaveBeenCalledWith("netease", "user_cloud_del", { id: ["1001"] });
+      expect(store.cloudTracks.map((track) => track.cloudId)).toEqual(["1002"]);
+      expect(store.cloudCount).toBe(1);
+    });
+
+    it("旧云盘缓存迟到时不覆盖新账号，也不替新账号发起刷新", async () => {
+      const store = loggedInStore();
+      let finish!: (value: unknown) => void;
+      cache.getItem.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const pending = store.ensureCloud();
+      store.clearContent();
+      store.profile = { ...profile, userId: 2 };
+      store.cloudCount = 1;
+      store.cloudTracks = [
+        { id: "99", source: "netease", title: "新账号", artists: [], duration: 1000 },
+      ];
+      finish({ userId: 1, tracks: [{ id: "10" }], count: 10, size: 100, maxSize: 1000 });
+      await pending;
+      expect(store.cloudTracks[0].id).toBe("99");
+      expect(store.cloudCount).toBe(1);
+      expect(call.mock.calls.some(([, name]) => name === "user_cloud")).toBe(false);
+    });
+
+    it("删除成功会取消旧刷新，迟到分页不会恢复被删条目", async () => {
+      const store = loggedInStore();
+      await store.ensureCloud();
+      let finish!: (value: unknown) => void;
+      call.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const refresh = store.refreshCloud();
+      await store.removeCloudTracks(["1000"]);
+      finish({ ok: true, body: bodies.user_cloud });
+      expect(await refresh).toBe(false);
+      expect(store.cloudTracks).toEqual([]);
+      expect(store.cloudCount).toBe(0);
+      expect(store.cloudLoading).toBe(false);
+    });
+
+    it("旧账号删除迟到时不修改新账号的云盘与缓存", async () => {
+      const store = loggedInStore();
+      await store.ensureCloud();
+      let finish!: (value: unknown) => void;
+      call.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const pending = store.removeCloudTracks(["1000"]);
+      store.clearContent();
+      store.profile = { ...profile, userId: 2 };
+      store.cloudTracks = [
+        {
+          id: "10",
+          cloudId: "1000",
+          source: "netease",
+          title: "新账号",
+          artists: [],
+          duration: 1000,
+        },
+      ];
+      store.cloudCount = 1;
+      cache.setItem.mockClear();
+      finish({ ok: true, body: { code: 200 } });
+      await pending;
+      expect(store.cloudTracks).toHaveLength(1);
+      expect(store.cloudCount).toBe(1);
+      expect(cache.setItem).not.toHaveBeenCalled();
+    });
+
+    it("未登录时不发送云盘写入", async () => {
+      const store = useUserStore();
+
+      await expect(store.matchCloudTrack("1000", "20")).rejects.toThrow("请先登录");
+      expect(call).not.toHaveBeenCalled();
+    });
   });
 });

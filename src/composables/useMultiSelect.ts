@@ -39,6 +39,14 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
   const active = ref(false);
   const selectedIds = ref(new Set<string>());
 
+  /**
+   * 取得列表条目身份，匹配到同一歌曲的不同云盘条目仍可独立选择
+   * @param track - 当前列表曲目
+   * @returns 云盘条目 ID 或其他集合原有的曲目 ID
+   */
+  const getItemKey = (track: Track): string =>
+    options.collectionType.value === "cloud" ? (track.cloudId ?? track.id) : track.id;
+
   const selectedCount = computed(() => selectedIds.value.size);
   const isAllSelected = computed(
     () => items.value.length > 0 && selectedIds.value.size === items.value.length,
@@ -47,7 +55,7 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
     () => selectedIds.value.size > 0 && selectedIds.value.size < items.value.length,
   );
   const selectedItems = computed(() =>
-    items.value.filter((item) => selectedIds.value.has(item.id)),
+    items.value.filter((item) => selectedIds.value.has(getItemKey(item))),
   );
 
   const toggle = (id: string): void => {
@@ -57,14 +65,17 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
     selectedIds.value = next;
   };
 
+  /** 按当前集合的条目身份全选 */
   const selectAll = (): void => {
-    selectedIds.value = new Set(items.value.map((t) => t.id));
+    selectedIds.value = new Set(items.value.map(getItemKey));
   };
 
+  /** 按条目身份反选，避免相同播放 ID 的云盘歌曲互相影响 */
   const invertSelection = (): void => {
     const next = new Set<string>();
     for (const item of items.value) {
-      if (!selectedIds.value.has(item.id)) next.add(item.id);
+      const key = getItemKey(item);
+      if (!selectedIds.value.has(key)) next.add(key);
     }
     selectedIds.value = next;
   };
@@ -114,6 +125,7 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
     deleteConfirmOpen.value = true;
   };
 
+  /** 按删除来源提交对应身份，播放列表仍使用播放 ID，云盘使用条目 ID */
   const confirmDelete = async (): Promise<void> => {
     const tracks = pendingDeleteTracks.value;
     const ids = tracks.map((track) => track.id);
@@ -125,7 +137,7 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
           await player.purgeDeletedTracks(ids);
         }
       } else if (pendingDeleteAction.value === "cloud") {
-        await userStore.removeCloudTracks(ids);
+        await userStore.removeCloudTracks(tracks.map((track) => track.cloudId ?? track.id));
       } else if (options.collectionId.value) {
         if (options.source.value === "local") {
           await playlistStore.removeTracks(options.collectionId.value, ids);
@@ -203,6 +215,7 @@ export const useMultiSelect = (items: Ref<Track[]>, options: MultiSelectOptions)
     // 选择状态
     active,
     selectedIds,
+    getItemKey,
     selectedCount,
     isAllSelected,
     isPartial,

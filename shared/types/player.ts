@@ -152,6 +152,8 @@ export interface Track {
   fee?: TrackFee;
   /** 云盘歌曲 */
   cloud?: boolean;
+  /** 云盘条目 ID，纠正匹配时使用，不替代播放用的平台歌曲 ID */
+  cloudId?: string;
 }
 
 /** 播放队列项，将曲目元数据与本次播放上下文分离 */

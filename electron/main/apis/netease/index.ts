@@ -74,6 +74,7 @@ const NON_CACHEABLE: ReadonlySet<string> = new Set([
   "user_subcount",
   "user_cloud",
   "user_cloud_del",
+  "cloud_match",
   "cloud_upload_check",
   "cloud_nos_token",
   "cloud_upload_info",

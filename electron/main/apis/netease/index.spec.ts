@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   album_sub: vi.fn(),
   playlist_subscribe: vi.fn(),
   playlist_tracks: vi.fn(),
+  cloud_match: vi.fn(),
   getSessionCookies: vi.fn(() => ({ MUSIC_U: "test-session" })),
   saveSessionCookies: vi.fn(),
   clearSessionCookies: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock("./modules", () => ({
     album_sub: api.album_sub,
     playlist_subscribe: api.playlist_subscribe,
     playlist_tracks: api.playlist_tracks,
+    cloud_match: api.cloud_match,
   },
 }));
 
@@ -64,6 +66,7 @@ describe("平台主进程缓存与会话", () => {
     api.user_record.mockReset();
     api.search.mockReset().mockResolvedValue(response(200));
     api.login_refresh.mockReset().mockResolvedValue(response(200));
+    api.cloud_match.mockReset().mockResolvedValue(response(200));
     for (const name of [
       "song_like",
       "artist_sub",
@@ -88,6 +91,18 @@ describe("平台主进程缓存与会话", () => {
     expect(api.saveSessionCookies).toHaveBeenCalledWith(
       "netease",
       expect.objectContaining({ sdkState: "current" }),
+    );
+  });
+
+  it("相同云盘纠正参数每次都提交，不缓存写入结果", async () => {
+    const params = { uid: 1, sid: "10", asid: "20" };
+    await callNetease("cloud_match", params);
+    await callNetease("cloud_match", params);
+
+    expect(api.cloud_match).toHaveBeenCalledTimes(2);
+    expect(api.cloud_match).toHaveBeenCalledWith(
+      { ...params, cookie: { MUSIC_U: "test-session" } },
+      expect.any(Function),
     );
   });
 

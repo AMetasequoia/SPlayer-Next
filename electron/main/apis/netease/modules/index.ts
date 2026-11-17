@@ -17,6 +17,7 @@ import register_anonimous from "./register_anonimous";
 import user_account from "./user_account";
 import user_cloud from "./user_cloud";
 import user_cloud_del from "./user_cloud_del";
+import cloud_match from "./cloud_match";
 import cloud_upload_check from "./cloud_upload_check";
 import cloud_nos_token from "./cloud_nos_token";
 import cloud_upload_info from "./cloud_upload_info";
@@ -108,6 +109,7 @@ export const modules: Record<string, NeteaseModule> = {
   user_account,
   user_cloud,
   user_cloud_del,
+  cloud_match,
   cloud_upload_check,
   cloud_nos_token,
   cloud_upload_info,

@@ -29,7 +29,7 @@ import {
 } from "@/apis/playlist/netease";
 import { subscribeAlbum } from "@/apis/album/netease";
 import { subscribeArtist } from "@/apis/artist/netease";
-import { fetchUserCloud, deleteCloudSongs } from "@/apis/cloud/netease";
+import { fetchUserCloud, deleteCloudSongs, matchCloudSong } from "@/apis/cloud/netease";
 
 /** 登录 cookie 保活间隔 */
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -133,6 +133,8 @@ export const useUserStore = defineStore(
     const cloudLoading = ref(false);
     /** 进行中的云盘拉取 */
     let cloudAbort: AbortController | null = null;
+    /** 仅保留在途纠正操作及其账号代次，防止重复提交 */
+    const pendingCloudMatches = new Map<string, number>();
 
     /** 「我喜欢的音乐」歌单 id */
     const likedPlaylistId = computed<string | null>(() => playlists.value[0]?.id ?? null);
@@ -219,6 +221,7 @@ export const useUserStore = defineStore(
       likedPlaylistLoading.value = false;
       currentLikedPlaylistId = null;
       cloudAbort?.abort();
+      pendingCloudMatches.clear();
       cloudTracks.value = [];
       cloudCount.value = 0;
       cloudSize.value = 0;
@@ -350,11 +353,23 @@ export const useUserStore = defineStore(
       return pending;
     };
 
-    /** 恢复云盘缓存 */
+    /**
+     * 恢复当前账号的云盘缓存，不覆盖已刷新的列表
+     * @param userId - 请求恢复时的账号
+     */
     const hydrateCloudFromCache = async (userId: number): Promise<void> => {
+      const version = accountVersion;
       try {
         const cached = await cacheDb.getItem<CloudCache>(CLOUD_CACHE_KEY);
-        if (!cached || cached.userId !== userId || cached.tracks.length === 0) return;
+        if (
+          version !== accountVersion ||
+          profile.value?.userId !== userId ||
+          cloudTracks.value.length > 0 ||
+          !cached ||
+          cached.userId !== userId ||
+          cached.tracks.length === 0
+        )
+          return;
         cloudTracks.value = cached.tracks;
         cloudCount.value = cached.count;
         cloudSize.value = cached.size;
@@ -379,8 +394,11 @@ export const useUserStore = defineStore(
       cacheDb.setItem(CLOUD_CACHE_KEY, payload).catch(() => {});
     };
 
-    /** 分页获取云盘全部曲目 */
-    const refreshCloud = async (): Promise<void> => {
+    /**
+     * 分页获取云盘全部曲目
+     * @returns 是否完成当前账号的全部分页刷新
+     */
+    const refreshCloud = async (): Promise<boolean> => {
       cloudAbort?.abort();
       const controller = new AbortController();
       cloudAbort = controller;
@@ -390,9 +408,9 @@ export const useUserStore = defineStore(
         let offset = 0;
         const limit = 500;
         while (true) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) return false;
           const page = await fetchUserCloud(offset, limit);
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) return false;
           cloudCount.value = page.count;
           cloudSize.value = page.size;
           cloudMaxSize.value = page.maxSize;
@@ -401,9 +419,12 @@ export const useUserStore = defineStore(
           if (!page.hasMore || page.tracks.length < limit) break;
           offset += page.tracks.length;
         }
-        if (!controller.signal.aborted) persistCloudCache();
+        if (controller.signal.aborted) return false;
+        persistCloudCache();
+        return true;
       } catch (err) {
         console.warn("[user] cloud load failed:", err);
+        return false;
       } finally {
         if (!controller.signal.aborted) cloudLoading.value = false;
       }
@@ -417,20 +438,61 @@ export const useUserStore = defineStore(
       const userId = profile.value?.userId;
       if (!userId) return;
       if (!force && cloudTracks.value.length > 0) return;
+      const version = accountVersion;
       if (cloudTracks.value.length === 0) await hydrateCloudFromCache(userId);
+      if (version !== accountVersion || profile.value?.userId !== userId) return;
       await refreshCloud();
     };
 
     /**
-     * 从云盘删除歌曲
-     * @param trackIds - 曲目 id 列表
+     * 纠正云盘关联后重新读取服务端曲目，不用目标歌曲详情猜测云盘身份
+     * @param songId - 云盘条目 ID
+     * @param targetId - 验证后的目标歌曲 ID
+     * @returns 是否同时完成云盘列表刷新
      */
-    const removeCloudTracks = async (trackIds: string[]): Promise<void> => {
-      if (trackIds.length === 0) return;
-      await deleteCloudSongs(trackIds);
-      const removeSet = new Set(trackIds);
-      cloudTracks.value = cloudTracks.value.filter((track) => !removeSet.has(track.id));
-      cloudCount.value = Math.max(0, cloudCount.value - trackIds.length);
+    const matchCloudTrack = async (songId: string, targetId: string): Promise<boolean> => {
+      const userId = profile.value?.userId;
+      if (!userId) throw new Error("请先登录音乐平台");
+      if (pendingCloudMatches.has(songId)) throw new Error("该曲目的纠正操作正在进行");
+      const version = accountVersion;
+      pendingCloudMatches.set(songId, version);
+      try {
+        await matchCloudSong(userId, songId, targetId);
+        if (version !== accountVersion || profile.value?.userId !== userId) {
+          throw new Error("平台账号已变更");
+        }
+        cloudAbort?.abort();
+        try {
+          await cacheDb.removeItem(CLOUD_CACHE_KEY);
+        } catch (err) {
+          console.warn("[user] clear outdated cloud cache failed:", err);
+        }
+        if (version !== accountVersion || profile.value?.userId !== userId) {
+          throw new Error("平台账号已变更");
+        }
+        return await refreshCloud();
+      } finally {
+        if (pendingCloudMatches.get(songId) === version) pendingCloudMatches.delete(songId);
+      }
+    };
+
+    /**
+     * 从云盘删除歌曲
+     * @param cloudIds - 云盘条目 ID 列表，不是匹配后的播放 ID
+     */
+    const removeCloudTracks = async (cloudIds: string[]): Promise<void> => {
+      if (cloudIds.length === 0) return;
+      const version = accountVersion;
+      const uniqueIds = [...new Set(cloudIds)];
+      await deleteCloudSongs(uniqueIds);
+      if (version !== accountVersion) return;
+      cloudAbort?.abort();
+      cloudLoading.value = false;
+      const removeSet = new Set(uniqueIds);
+      cloudTracks.value = cloudTracks.value.filter(
+        (track) => !removeSet.has(track.cloudId ?? track.id),
+      );
+      cloudCount.value = Math.max(0, cloudCount.value - uniqueIds.length);
       persistCloudCache();
     };
 
@@ -815,6 +877,7 @@ export const useUserStore = defineStore(
       cloudLoading,
       ensureCloud,
       refreshCloud,
+      matchCloudTrack,
       removeCloudTracks,
 
       createPlaylist,
