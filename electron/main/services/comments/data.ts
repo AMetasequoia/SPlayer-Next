@@ -13,13 +13,14 @@ interface NeteaseUser {
   avatarUrl?: string;
 }
 
-interface NeteaseComment {
+export interface NeteaseComment {
   commentId?: string | number;
   beRepliedCommentId?: string | number;
   content?: string;
   time?: number;
   likedCount?: number;
   liked?: boolean;
+  picInfo?: { picUrl?: string };
   ipLocation?: {
     location?: string;
   };
@@ -104,15 +105,22 @@ const optionalString = (value: unknown): string | undefined => {
   return text || undefined;
 };
 
-/** 转换 NCM 评论项 */
-export const normalizeNeteaseComment = (raw: NeteaseComment): MusicCommentItem | null => {
+/**
+ * 转换 NCM 评论、点赞状态及一层引用，复用同一数据契约
+ * @param raw - 平台评论
+ * @param quoted - 是否已在引用层，避免保留无限递归回复
+ */
+export const normalizeNeteaseComment = (
+  raw: NeteaseComment,
+  quoted = false,
+): MusicCommentItem | null => {
   const id = toStringId(raw.commentId ?? raw.beRepliedCommentId);
   const text = optionalString(raw.content);
   if (!id || !text) return null;
 
   const userId = toStringId(raw.user?.userId);
-  const reply = (raw.beReplied ?? [])
-    .map((item) => normalizeNeteaseComment(item))
+  const reply = (quoted ? [] : (raw.beReplied ?? []))
+    .map((item) => normalizeNeteaseComment(item, true))
     .filter((item): item is MusicCommentItem => item !== null);
 
   const item: MusicCommentItem = {
@@ -127,6 +135,9 @@ export const normalizeNeteaseComment = (raw: NeteaseComment): MusicCommentItem |
   const location = optionalString(raw.ipLocation?.location);
   if (location) item.location = location;
   if (typeof raw.likedCount === "number") item.likedCount = raw.likedCount;
+  if (typeof raw.liked === "boolean") item.liked = raw.liked;
+  const image = optionalString(raw.picInfo?.picUrl);
+  if (image && /^https?:\/\//i.test(image)) item.images = [image];
   if (typeof raw.replyCount === "number") item.replyTotal = raw.replyCount;
   if (reply.length) item.reply = reply;
   return item;

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { PlaybackContext, TrackSource } from "@shared/types/player";
+import type { NeteaseCommentTarget } from "@shared/types/comment";
+import { isNeteaseCommentTarget } from "@shared/utils/comments";
+import NeteaseComments from "@/components/list/NeteaseComments.vue";
 import type { Collection, CollectionType } from "@/types/collection";
 import type { SongListSortKey } from "@/types/list";
 import type { DropdownMenuItem } from "@/components/ui/SDropdownMenu.vue";
@@ -31,6 +34,25 @@ const id = route.params.id as string;
 const sortKey = computed<SongListSortKey>(() => `collection.${type}`);
 
 const collection = shallowRef<Collection | null>(null);
+const activeTab = ref("songs");
+const commentTarget = computed<NeteaseCommentTarget | null>(() => {
+  if (
+    !collection.value ||
+    source !== "netease" ||
+    (type !== "album" && type !== "playlist") ||
+    collection.value.privacy === 10
+  )
+    return null;
+  const target = { type, id };
+  return isNeteaseCommentTarget(target) ? target : null;
+});
+const detailTabs = computed(() => [
+  { key: "songs", label: t("comments.songs") },
+  { key: "comments", label: t("comments.tab") },
+]);
+watch(commentTarget, (target) => {
+  if (!target) activeTab.value = "songs";
+});
 const preview = getCoverPreview(route.fullPath);
 /** 首屏头部只复用轻量摘要，不将预览数据交给播放和歌单管理逻辑 */
 const header = computed(() => collection.value ?? preview);
@@ -181,7 +203,12 @@ const moreMenuItems = computed<DropdownMenuItem[]>(() => {
   const isOnline = source !== "local" && source !== "streaming";
   const isLocal = source === "local";
   const list: DropdownMenuItem[] = [
-    { key: "batchManage", label: t("songList.batch.manage"), icon: IconLucideListChecks },
+    {
+      key: "batchManage",
+      label: t("songList.batch.manage"),
+      icon: IconLucideListChecks,
+      show: activeTab.value === "songs",
+    },
     { key: "edit", label: editLabel.value, icon: IconLucidePencil, show: manage.canManage.value },
     {
       key: "delete",
@@ -402,6 +429,7 @@ onBeforeUnmount(() => {
               </SDropdownMenu>
             </div>
             <SInput
+              v-if="activeTab === 'songs'"
               v-model="searchQuery"
               :placeholder="t('common.search')"
               clearable
@@ -417,9 +445,16 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <STabs v-if="commentTarget" v-model="activeTab" :tabs="detailTabs" class="shrink-0 px-5" />
     <Transition name="fade" mode="out-in" :duration="150">
+      <NeteaseComments
+        v-if="activeTab === 'comments' && commentTarget"
+        key="comments"
+        :target="commentTarget"
+        class="flex-1 min-h-0"
+      />
       <div
-        v-if="collection && collection.tracks.length > 0"
+        v-else-if="collection && collection.tracks.length > 0"
         :key="collection.id"
         class="flex-1 min-h-0"
       >

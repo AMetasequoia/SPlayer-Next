@@ -30,6 +30,40 @@ const track: Track = {
   duration: 1000,
 };
 
+describe("仅网易云歌曲的独立评论入口", () => {
+  it("用播放 ID 打开评论并收起播放器，不使用 cloudId", async () => {
+    actions.push.mockClear();
+    actions.setPlayerExpanded.mockClear();
+    const menu = useTrackMenu(shallowRef(track));
+    expect(menu.items.value.find((item) => item.key === "comments")?.show).toBe(true);
+    await menu.handleSelect("comments");
+    expect(actions.push).toHaveBeenCalledExactlyOnceWith({
+      name: "song-comments",
+      params: { id: "10" },
+    });
+    expect(actions.setPlayerExpanded).toHaveBeenCalledWith(false);
+  });
+
+  it.each(["local", "qqmusic", "kugou", "plugin", "streaming"] as const)(
+    "%s 不提供也不执行评论跳转",
+    async (source) => {
+      actions.push.mockClear();
+      const menu = useTrackMenu(shallowRef({ ...track, source }));
+      expect(menu.items.value.find((item) => item.key === "comments")?.show).toBe(false);
+      await menu.handleSelect("comments");
+      expect(actions.push).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["0", "", "bad", "-1"])("无效 ID %s 不打开评论", async (id) => {
+    actions.push.mockClear();
+    const menu = useTrackMenu(shallowRef({ ...track, id }));
+    expect(menu.items.value.find((item) => item.key === "comments")?.show).toBe(false);
+    await menu.handleSelect("comments");
+    expect(actions.push).not.toHaveBeenCalled();
+  });
+});
+
 describe("音乐百科菜单入口", () => {
   it("网易云歌曲用播放 ID 打开独立百科页面，不使用云盘条目 ID", async () => {
     actions.push.mockClear();

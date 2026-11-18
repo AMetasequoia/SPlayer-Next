@@ -15,6 +15,9 @@ const api = vi.hoisted(() => ({
   cloud_match: vi.fn(),
   song_wiki_summary: vi.fn(),
   music_first_listen_info: vi.fn(),
+  comment_new: vi.fn(),
+  comment_hot: vi.fn(),
+  comment_like: vi.fn(),
   getSessionCookies: vi.fn(() => ({ MUSIC_U: "test-session" })),
   saveSessionCookies: vi.fn(),
   clearSessionCookies: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock("./modules", () => ({
     cloud_match: api.cloud_match,
     song_wiki_summary: api.song_wiki_summary,
     music_first_listen_info: api.music_first_listen_info,
+    comment_new: api.comment_new,
+    comment_hot: api.comment_hot,
+    comment_like: api.comment_like,
   },
 }));
 
@@ -120,6 +126,22 @@ describe("平台主进程缓存与会话", () => {
       expect(api[name]).toHaveBeenCalledTimes(2);
       setNeteaseCookies({ MUSIC_U: "another-account" });
       await callNetease(name, { id: "10" });
+      expect(api[name]).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cookie: { MUSIC_U: "another-account" } }),
+        expect.any(Function),
+      );
+    },
+  );
+
+  it.each(["comment_new", "comment_hot", "comment_like"] as const)(
+    "%s 不缓存账号点赞状态或重复写入",
+    async (name) => {
+      api[name].mockReset().mockResolvedValue(response(200));
+      await callNetease(name, { id: "1" });
+      await callNetease(name, { id: "1" });
+      expect(api[name]).toHaveBeenCalledTimes(2);
+      setNeteaseCookies({ MUSIC_U: "another-account" });
+      await callNetease(name, { id: "1" });
       expect(api[name]).toHaveBeenLastCalledWith(
         expect.objectContaining({ cookie: { MUSIC_U: "another-account" } }),
         expect.any(Function),

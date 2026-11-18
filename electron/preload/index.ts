@@ -30,7 +30,11 @@ import type { PlayEventInput, FavoriteEventInput } from "@shared/types/stats";
 import type { TagEditRequest } from "@shared/types/tagEditor";
 import type { UpdateEvent } from "@shared/types/update";
 import type { CloudUploadProgress } from "@shared/types/cloudUpload";
-import type { MusicCommentQuery } from "@shared/types/comment";
+import type {
+  MusicCommentQuery,
+  NeteaseCommentQuery,
+  NeteaseCommentLikeQuery,
+} from "@shared/types/comment";
 import type { AiModelSaveInput } from "@shared/types/ai";
 import type { DesktopLyricUnlockButtonBounds, TaskbarLyricLayoutEvent } from "@shared/types/window";
 import type {
@@ -593,6 +597,8 @@ const api = {
   comments: {
     sources: () => ipcRenderer.invoke("comments:sources"),
     get: (args: MusicCommentQuery) => ipcRenderer.invoke("comments:get", args),
+    resource: (args: NeteaseCommentQuery) => ipcRenderer.invoke("comments:resource", args),
+    setLiked: (args: NeteaseCommentLikeQuery) => ipcRenderer.invoke("comments:setLiked", args),
   },
   download: {
     // 入队下载

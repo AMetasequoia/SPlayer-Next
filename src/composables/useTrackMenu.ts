@@ -6,7 +6,7 @@ import type { DropdownMenuItem } from "@/components/ui/SDropdownMenu.vue";
 import * as player from "@/core/player";
 import { useSettingsStore } from "@/stores/settings";
 import { usePluginsStore } from "@/stores/plugins";
-import { useStatusStore } from "@/stores/status";
+import { isNeteaseCommentTrack } from "@shared/utils/comments";
 import { useDownloadStore } from "@/stores/download";
 import { useCopyText } from "@/composables/useCopyText";
 import { toast } from "@/composables/useToast";
@@ -66,7 +66,6 @@ export const useTrackMenu = (
 ) => {
   const { t } = useI18n();
   const router = useRouter();
-  const status = useStatusStore();
   const settings = useSettingsStore();
   const plugins = usePluginsStore();
   const download = useDownloadStore();
@@ -174,6 +173,7 @@ export const useTrackMenu = (
         key: "comments",
         label: t("comments.name"),
         icon: markRaw(IconMessageCircle),
+        show: isNeteaseCommentTrack(track.value),
       },
       {
         key: "wiki",
@@ -313,7 +313,9 @@ export const useTrackMenu = (
         });
         break;
       case "comments":
-        status.showComments(current);
+        if (!isNeteaseCommentTrack(current)) break;
+        await router.push({ name: "song-comments", params: { id: current.id } });
+        setPlayerExpanded(false);
         break;
       case "wiki":
         if (current.source !== "netease" || !/^[1-9]\d*$/.test(current.id)) break;

@@ -50,6 +50,8 @@ import cloud_lyric_get from "./cloud_lyric_get";
 
 import comment_music from "./comment_music";
 import comment_hot from "./comment_hot";
+import comment_new from "./comment_new";
+import comment_like from "./comment_like";
 
 import song_detail from "./song_detail";
 import song_url from "./song_url";
@@ -146,6 +148,8 @@ export const modules: Record<string, NeteaseModule> = {
 
   comment_music,
   comment_hot,
+  comment_new,
+  comment_like,
 
   song_detail,
   song_url,

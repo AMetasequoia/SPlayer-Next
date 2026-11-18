@@ -8,6 +8,8 @@ export type CollectionType = "album" | "playlist" | "radio" | "cloud";
 
 /** 合集信息 */
 export interface Collection {
+  /** 网易云私密歌单不开放评论 */
+  privacy?: number;
   id: string;
   type: CollectionType;
   /** 数据来源 */

@@ -58,6 +58,8 @@ export interface Album {
 
 /** 歌单 */
 export interface Playlist {
+  /** 网易云歌单隐私标记，10 表示私密 */
+  privacy?: number;
   serverId?: string;
   id?: string;
   name: string;

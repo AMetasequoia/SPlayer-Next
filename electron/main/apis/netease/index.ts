@@ -52,6 +52,9 @@ const NON_CACHEABLE: ReadonlySet<string> = new Set([
   "song_download_url",
   "song_wiki_summary",
   "music_first_listen_info",
+  "comment_new",
+  "comment_hot",
+  "comment_like",
   "scrobble",
   "scrobble_v1",
   "like",
@@ -148,6 +151,9 @@ const serialize = (cookies: Record<string, string>): string =>
   Object.entries(cookies)
     .map(([k, v]) => `${k}=${v}`)
     .join("; ");
+
+/** 获取会话代次，供账号写入绑定原读取会话，不向渲染端暴露凭据 */
+export const getNeteaseSessionVersion = (): number => sessionVersion;
 
 export const getNeteaseCookies = (): Record<string, string> => ({ ...loadSession() });
 

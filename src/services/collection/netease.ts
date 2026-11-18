@@ -4,6 +4,12 @@ import { fetchAlbum } from "@/apis/album/netease";
 import { fetchPlaylist } from "@/apis/playlist/netease";
 import type { LoadCollectionOptions } from "./types";
 
+/**
+ * 加载网易云合集，保留歌单隐私标记以控制评论入口
+ * @param type - 合集类型
+ * @param id - 资源 ID
+ * @param options - 加载回调和取消信号
+ */
 export const loadNeteaseCollection = async (
   type: CollectionType,
   id: string,
@@ -41,6 +47,7 @@ export const loadNeteaseCollection = async (
     description?: string;
     creator?: string;
     count?: number;
+    privacy?: number;
   };
   const current = (): Collection | null =>
     meta
@@ -52,6 +59,7 @@ export const loadNeteaseCollection = async (
           cover: meta.cover,
           description: meta.description,
           creator: meta.creator,
+          privacy: meta.privacy,
           tracks: [...tracks],
           trackCount: meta.count ?? tracks.length,
         }
@@ -65,6 +73,7 @@ export const loadNeteaseCollection = async (
         description: value.description,
         creator: value.owner,
         count: value.trackCount,
+        privacy: value.privacy,
       };
       if (!options.signal?.aborted) options.onUpdate(current());
     },

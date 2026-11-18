@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { QualityLevel } from "@/utils/quality";
+import { isNeteaseCommentTrack } from "@shared/utils/comments";
 import { useStatusStore } from "@/stores/status";
 import { useMediaStore } from "@/stores/media";
 import { useSettingsStore } from "@/stores/settings";
@@ -13,6 +14,7 @@ import { setPlayerExpanded } from "@/services/playerTransition";
 import { useFullPlayer } from "../../context";
 
 const status = useStatusStore();
+const router = useRouter();
 const media = useMediaStore();
 const settings = useSettingsStore();
 const fav = useFavorite();
@@ -57,8 +59,11 @@ const {
   openPicker,
 } = usePlaylistPicker();
 
-const showComments = (): void => {
-  if (displayTrack.value) status.showComments(displayTrack.value);
+/** 打开网易云歌曲独立评论页，沿用播放器收起转场 */
+const showComments = async (): Promise<void> => {
+  if (!isNeteaseCommentTrack(displayTrack.value)) return;
+  await router.push({ name: "song-comments", params: { id: displayTrack.value.id } });
+  setPlayerExpanded(false);
 };
 </script>
 
@@ -91,11 +96,12 @@ const showComments = (): void => {
         </template>
       </SButton>
       <SButton
+        v-if="isNeteaseCommentTrack(displayTrack)"
         type="cover"
         variant="ghost"
         size="large"
         circle
-        :disabled="!hasTrack"
+        :title="t('comments.name')"
         @click="showComments"
       >
         <template #icon><IconLucideMessageCircle /></template>

@@ -29,6 +29,8 @@ export interface MusicCommentItem {
   time?: number;
   location?: string;
   likedCount?: number;
+  /** 当前网易云账号是否已点赞 */
+  liked?: boolean;
   images?: string[];
   replyTotal?: number;
   reply?: MusicCommentItem[];
@@ -64,4 +66,39 @@ export type MusicCommentResponse =
 export interface CommentsApi {
   sources: () => Promise<CommentSource[]>;
   get: (args: MusicCommentQuery) => Promise<MusicCommentResponse>;
+  resource: (args: NeteaseCommentQuery) => Promise<NeteaseCommentResponse>;
+  setLiked: (args: NeteaseCommentLikeQuery) => Promise<CommentLikeResponse>;
 }
+
+/** 网易云评论目标，不使用歌曲搜索匹配 */
+export interface NeteaseCommentTarget {
+  type: "song" | "album" | "playlist";
+  id: string;
+}
+
+/** 网易云资源评论读取参数 */
+export interface NeteaseCommentQuery {
+  target: NeteaseCommentTarget;
+  type: CommentTab;
+  page: number;
+  cursor?: string;
+}
+
+/** 当前页评论及其所属主进程会话 */
+export interface NeteaseCommentPage extends MusicCommentPage {
+  hasMore: boolean;
+  session: number;
+}
+
+/** 显式点赞操作，绑定读取评论时的会话 */
+export interface NeteaseCommentLikeQuery {
+  target: NeteaseCommentTarget;
+  commentId: string;
+  liked: boolean;
+  session: number;
+}
+
+export type NeteaseCommentResponse =
+  { ok: true; data: NeteaseCommentPage } | { ok: false; error: string };
+
+export type CommentLikeResponse = { ok: true } | { ok: false; error: string };
