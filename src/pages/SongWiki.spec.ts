@@ -133,11 +133,20 @@ describe("百科独立页面", () => {
       .find((button) => button.text() === "歌手")!
       .trigger("click");
     expect(mocks.artist).toHaveBeenCalledWith("歌手", { source: "netease", artistId: "1" });
+    const artistButton = wrapper.findAll("button").find((button) => button.text() === "歌手")!;
+    expect(artistButton.classes()).toEqual(
+      expect.arrayContaining(["border-none", "bg-transparent", "focus-visible:underline"]),
+    );
+    expect(artistButton.attributes("type")).toBe("button");
     await wrapper
       .findAll("button")
       .find((button) => button.text() === "专辑")!
       .trigger("click");
     expect(mocks.album).toHaveBeenCalledWith("专辑", { source: "netease", albumId: "2" });
+    const albumButton = wrapper.findAll("button").find((button) => button.text() === "专辑")!;
+    expect(albumButton.classes()).toEqual(
+      expect.arrayContaining(["border-none", "bg-transparent"]),
+    );
     expect(wrapper.find(`button[title="${zhCN.songList.context.more}"]`).exists()).toBe(true);
     expect(wrapper.find('[data-testid="songs"]').text()).toBe("1");
   });

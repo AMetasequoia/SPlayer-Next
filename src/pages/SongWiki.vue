@@ -103,7 +103,8 @@ const play = (): void => {
               <span v-if="index">/</span>
               <button
                 v-if="artist.id"
-                class="hover:text-primary"
+                type="button"
+                class="border-none bg-transparent cursor-pointer hover:text-primary focus-visible:underline"
                 @click="navigateToArtist(artist.name, { source: 'netease', artistId: artist.id })"
               >
                 {{ artist.name }}
@@ -115,7 +116,8 @@ const play = (): void => {
             <IconLucideDisc3 class="size-4" />
             <button
               v-if="track.album.id"
-              class="hover:text-primary"
+              type="button"
+              class="border-none bg-transparent cursor-pointer hover:text-primary focus-visible:underline"
               @click="
                 navigateToAlbum(track.album.name, { source: 'netease', albumId: track.album.id })
               "
@@ -215,6 +217,8 @@ const play = (): void => {
             <button
               v-for="(image, page) in sheet.images"
               :key="image"
+              type="button"
+              class="border-none bg-transparent cursor-pointer focus-visible:ring-2 focus-visible:ring-primary"
               :title="t('wiki.preview')"
               @click="previewImage = image"
             >
